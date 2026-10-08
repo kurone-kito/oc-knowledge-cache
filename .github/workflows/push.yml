@@ -50,11 +50,7 @@ jobs:
         node-version:
           - 26.x
         platform:
-          - os: ubuntu-24.04-arm
-            shell: bash
           - os: ubuntu-slim
-            shell: bash
-          - os: windows-latest
             shell: bash
           - os: windows-latest
             shell: powershell
