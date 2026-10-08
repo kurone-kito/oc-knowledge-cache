@@ -111,3 +111,11 @@ Runtime state lives under `.data/` (git-ignored, override with `--data`):
 The NAS is only ever read. Ingestion and the `knowledge` instance need no
 Internet once the models have been pulled; only the `web` instance needs it,
 by design.
+
+`ingest` is a host-side batch script run by a person or a scheduler, not a
+tool of an OpenClaw agent. It is the only writer of `manifest.json` and
+`store.sqlite`; the `knowledge` instance only runs `kc:search`, which opens
+the store read-only, so the data directory can be shared with it read-only.
+For that reason the store uses SQLite's default rollback journal instead of
+WAL (WAL readers need a writable `-shm` file); a search may wait a few
+milliseconds while a document is being replaced.
