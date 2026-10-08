@@ -291,3 +291,6 @@ pnpm-lock.yaml.*
 ### Project ###
 # Local knowledge cache (manifest, vector store, rendered configs)
 .data/
+
+# Generated OpenClaw profiles (configs hold gateway tokens)
+.openclaw/

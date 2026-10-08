@@ -106,7 +106,10 @@ Runtime state lives under `.data/` (git-ignored, override with `--data`):
 - `manifest.json`: per-file `size`, `mtimeMs` and `sha256` of the last
   scan, which makes ingestion incremental.
 - `store.sqlite`: documents, chunks, vectors and the embedding model name.
-- `openclaw/`: rendered profile configs and workspaces.
+
+The generated OpenClaw profiles live in `.openclaw/` (also git-ignored),
+deliberately outside the data directory so that the web instance's workspace
+never sits next to the cache. See [OpenClaw instances](openclaw.md).
 
 The NAS is only ever read. Ingestion and the `knowledge` instance need no
 Internet once the models have been pulled; only the `web` instance needs it,
