@@ -67,6 +67,12 @@ export interface VectorStore {
   /** Brute-force cosine search; vectors are normalized on the way in. */
   search(query: Float32Array, options?: SearchOptions): SearchResult[];
   stats(): StoreStats;
+  /**
+   * A small named value kept with the store, for example how its documents
+   * were produced. Settings never mix with documents or vectors.
+   */
+  getSetting(name: string): string | undefined;
+  setSetting(name: string, value: string): void;
   close(): void;
 }
 
@@ -442,6 +448,13 @@ export const openStore = (
         score,
         text: row.text,
       }));
+    },
+
+    getSetting: (name) => getMeta(`setting:${name}`),
+
+    setSetting: (name, value) => {
+      requireWritable();
+      setMeta(`setting:${name}`, value);
     },
 
     stats: () => ({

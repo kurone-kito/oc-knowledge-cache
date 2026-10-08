@@ -84,7 +84,26 @@ export const l2Normalize = (values: ArrayLike<number>): Float32Array => {
   return result;
 };
 
+/**
+ * Embedding cannot work at all right now (server unreachable, model missing),
+ * as opposed to a problem with one text. Callers should stop instead of
+ * trying every remaining document.
+ */
+export class EmbeddingUnavailableError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'EmbeddingUnavailableError';
+  }
+}
+
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+/**
+ * Retryable statuses that describe the whole service, not one request. A 408
+ * or 425 is about the request at hand (too slow, too early) and stays an
+ * ordinary failure of that text once the retries are used up.
+ */
+const SERVICE_WIDE_STATUS = new Set([429, 502, 503, 504]);
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error
@@ -204,7 +223,7 @@ export const createOllamaEmbedder = (options: EmbedderOptions): Embedder => {
           await retry();
           continue;
         }
-        throw new Error(
+        throw new EmbeddingUnavailableError(
           `Cannot reach Ollama at ${options.baseUrl}: ${errorMessage(error)}`,
           { cause: error },
         );
@@ -216,13 +235,17 @@ export const createOllamaEmbedder = (options: EmbedderOptions): Embedder => {
         await retry();
         continue;
       }
-      throw new Error(
-        describeFailure(
-          response.status,
-          await response.text().catch(() => ''),
-          options.model,
-        ),
+      const failure = describeFailure(
+        response.status,
+        await response.text().catch(() => ''),
+        options.model,
       );
+      // A missing model, or a service that keeps answering "busy" or "gone"
+      // after the retries, fails every request alike: callers should stop. A
+      // plain 500 or a 400 may be about this one text, so it stays ordinary.
+      throw response.status === 404 || SERVICE_WIDE_STATUS.has(response.status)
+        ? new EmbeddingUnavailableError(failure)
+        : new Error(failure);
     }
   };
 

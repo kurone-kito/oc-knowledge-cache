@@ -168,6 +168,33 @@ describe('openStore', () => {
   });
 });
 
+describe('settings', () => {
+  it('keeps named values next to the documents, across reopen', async (t) => {
+    const { file, store } = await openIn(t);
+    assert.equal(store.getSetting('ingest'), undefined);
+    store.setSetting('ingest', '{"hidden":false}');
+    store.setSetting('ingest', '{"hidden":true}');
+    store.replaceDocument('a.md', 'a'.repeat(64), [chunk('x', [1, 0])]);
+    store.close();
+
+    const again = openStore(file, { model: 'test-model' });
+    assert.equal(again.getSetting('ingest'), '{"hidden":true}');
+    assert.equal(again.getSetting('other'), undefined);
+    assert.equal(again.stats().documents, 1, 'settings are not documents');
+    again.close();
+  });
+
+  it('cannot be changed through a read-only store', async (t) => {
+    const { file, store } = await openIn(t);
+    store.setSetting('ingest', 'x');
+    store.close();
+    const reader = openStore(file, { readOnly: true });
+    assert.equal(reader.getSetting('ingest'), 'x');
+    assert.throws(() => reader.setSetting('ingest', 'y'), /read-only/);
+    reader.close();
+  });
+});
+
 describe('replaceDocument and removeDocument', () => {
   it('replaces every chunk of a document atomically', async (t) => {
     const { store } = await openIn(t);
