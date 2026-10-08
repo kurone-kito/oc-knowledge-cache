@@ -29,8 +29,14 @@ pnpm run lint:fix # Lint and auto-fix
 pnpm run test
 ```
 
-Currently, the command works as an alias for the `pnpm run lint` command.
-Set up your own testing framework and replace this script as needed.
+The command runs the linters (including the `tsc` typecheck) and then the
+unit tests. Unit tests are `src/**/*.test.mts` files executed by the built-in
+Node.js test runner; Node.js strips the types natively, so there is no build
+step. Run only the unit tests with:
+
+```sh
+pnpm run test:unit
+```
 
 ### Cleaning
 

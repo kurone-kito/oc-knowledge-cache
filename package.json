@@ -21,11 +21,13 @@
     "lint:check:biome": "biome check",
     "lint:check:cspell": "cspell lint --show-suggestions .",
     "lint:check:markdown": "markdownlint-cli2 \"**/*.md\"",
+    "lint:check:tsc": "tsc",
     "lint:fix": "pnpm run --stream \"/(lint:fix:.+|lint:check:cspell)/\"",
     "lint:fix:biome": "biome check --write",
     "lint:fix:markdown": "markdownlint-cli2 --fix \"**/*.md\"",
     "prepare": "husky",
-    "test": "pnpm run lint"
+    "test": "pnpm run lint && pnpm run test:unit",
+    "test:unit": "node --test \"src/**/*.test.mts\""
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
@@ -38,6 +40,7 @@
     "@kurone-kito/lint-staged-config": "^0.23.0",
     "@kurone-kito/markdownlint-config": "^0.23.0",
     "@kurone-kito/typescript-config": "^0.22.0",
+    "@types/node": "^26.6.4",
     "cspell": "^10.3.6",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",

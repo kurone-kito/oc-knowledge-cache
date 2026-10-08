@@ -206,6 +206,9 @@ importers:
       '@kurone-kito/typescript-config':
         specifier: ^0.22.0
         version: 0.22.0(typescript@7.0.2)
+      '@types/node':
+        specifier: ^26.6.4
+        version: 26.6.4
       cspell:
         specifier: ^10.3.6
         version: 10.3.6
