@@ -111,6 +111,52 @@ fact, and to say so when the cache has nothing relevant.
 - Large models run slowly on small GPUs. `models:recommend` explains the fit
   of every installed model.
 
+## Provisioning a machine
+
+```sh
+pnpm run provision plan     # list what is missing; changes nothing
+pnpm run provision apply    # do the automatic steps
+```
+
+The plan compares the machine with what the system needs: a running Ollama,
+the recommended agent and embedding models, the OpenClaw CLI, and generated
+profiles. Choose models yourself with `--agent-model` and `--embed-model`; an
+existing cache keeps its embedding model. `apply` pulls the missing models and
+generates the profiles. Starting Ollama and installing OpenClaw are printed as
+MANUAL steps and never done for you.
+
+The profiles count as up to date only when both configs and both skills exist,
+the isolation properties still hold (including each agent's own workspace and
+the project directory), the knowledge skill points at this run's `--data` and
+this repository, and they name the chosen agent model, the `--ollama-url` and
+the `--project-repo` of this run. Pass the same `--out`,
+`--data`, `--project-repo` and `--ollama-url` every time: profiles that differ
+are generated again (leaving `--project-repo` out means "no project
+repository"), while settings you added by hand are not judged. The gateway
+ports are yours to choose: a valid port you set by hand is kept when the
+profiles are generated again, and only a missing or unusable one (not a
+number, below 1024, or too close to the other gateway) is repaired.
+
+Profiles are only generated while Ollama is reachable and, if their agent
+model has to be pulled first, only after that pull succeeded. A failed
+embedding pull does not hold them back. A model download that goes silent for
+two minutes (`--pull-idle-timeout`) fails instead of hanging.
+
+Generating the profiles again replaces their config files; the previous config
+(with anything you added by hand) is kept as `openclaw.json.bak` next to it.
+For an Ollama on another machine, pass `--ram-gib`, `--vram-gib` and
+`--unified-memory` so that the models are chosen for that machine, not for this
+one.
+
+Both commands are safe to repeat: on a machine that is already set up, `plan`
+prints no automatic step and `apply` does nothing. The exit status is 0 when
+the machine is provisioned and 2 when it is not: `plan --check` and `apply`
+both exit 2 while a step is pending (including a MANUAL one), a step failed, or
+no model fits the machine (printed as `UNMET`). That suits a scheduled check.
+
+`mise.toml` pins pnpm and Ollama to exact versions and takes the latest
+Node.js (this project needs Node.js 26 or later).
+
 ## Checking the configs
 
 With OpenClaw installed:

@@ -33,6 +33,7 @@
     "nas:scan": "node src/cli/nas-scan.mts",
     "openclaw:generate": "node src/cli/openclaw-generate.mts",
     "prepare": "husky",
+    "provision": "node src/cli/provision.mts",
     "test": "pnpm run lint && pnpm run test:unit",
     "test:unit": "node --test \"src/**/*.test.mts\""
   },
