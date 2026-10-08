@@ -26,7 +26,7 @@ You can create a new project by using `degit` or the “Use this template”
 button on GitHub.
 
 ```sh
-npx degit kurone-kito/pnpm-project-template my-project
+npx degit kurone-kito/oc-knowledge-cache my-project
 cd my-project
 pnpm install
 ```
