@@ -1,9 +1,13 @@
 # Guidelines for AI Agents
 
-This project is a generic Node.js project template using pnpm.
-It supports both monorepo and non-monorepo configurations,
-providing a common foundation that can be specialized for either
-structure. It is derived from the language-independent
+This project is a single-package Node.js (pnpm) experiment in caching
+knowledge in non-volatile storage for local-LLM coding. It scans design
+documents on a NAS, converts Excel files into machine-readable text,
+stores them in a local vector store, and serves them to OpenClaw instances
+backed by Ollama.
+Read [docs/architecture.md](docs/architecture.md) for the design and
+[#2](https://github.com/kurone-kito/oc-knowledge-cache/issues/2) for the
+work breakdown. It is derived from the language-independent
 [template](https://github.com/kurone-kito/template) repository.
 
 This file is the canonical, tool-neutral instruction source for AI coding

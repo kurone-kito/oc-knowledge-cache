@@ -4,9 +4,10 @@
   "private": true,
   "description": "Experiment on non-volatile caching of knowledge using OpenClaw",
   "keywords": [
-    "boilerplate",
-    "pnpm",
-    "template"
+    "knowledge-cache",
+    "ollama",
+    "openclaw",
+    "rag"
   ],
   "homepage": "https://github.com/kurone-kito/oc-knowledge-cache#readme",
   "bugs": "https://github.com/kurone-kito/oc-knowledge-cache/issues",
