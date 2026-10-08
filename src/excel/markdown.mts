@@ -27,33 +27,53 @@ const plainLine = (line: string): string => {
     : line;
 };
 
-const renderTable = (rows: readonly (readonly string[])[]): string => {
+/** A block as lines: `header` repeats when the block is split, `body` does not. */
+export interface BlockLines {
+  readonly header: readonly string[];
+  readonly body: readonly string[];
+}
+
+const tableLines = (rows: readonly (readonly string[])[]): BlockLines => {
   const width = Math.max(...rows.map((row) => row.length));
   const line = (row: readonly string[]): string =>
     `| ${Array.from({ length: width }, (_, i) => cellText(row[i] ?? '')).join(' | ')} |`;
   const [header = [], ...body] = rows;
-  return [
-    line(header),
-    `| ${Array.from({ length: width }, () => '---').join(' | ')} |`,
-    ...body.map(line),
-  ].join('\n');
+  return {
+    body: body.map(line),
+    header: [
+      line(header),
+      `| ${Array.from({ length: width }, () => '---').join(' | ')} |`,
+    ],
+  };
+};
+
+/**
+ * Splits a block into the lines of its Markdown form. A table keeps its
+ * header row and separator in `header`; lists and paragraphs have none.
+ */
+export const blockLines = (block: BlockModel): BlockLines => {
+  switch (block.kind) {
+    case 'table':
+      return tableLines(block.rows);
+    case 'list':
+      return {
+        body: block.rows.map(
+          (row) => `- ${plainLine((row[0] ?? '').replace(/\r?\n/g, ' '))}`,
+        ),
+        header: [],
+      };
+    case 'paragraph':
+      return {
+        body: (block.rows[0]?.[0] ?? '').split(/\r?\n/).map(plainLine),
+        header: [],
+      };
+  }
 };
 
 /** Renders one block as Markdown, without its heading. */
 export const renderBlock = (block: BlockModel): string => {
-  switch (block.kind) {
-    case 'table':
-      return renderTable(block.rows);
-    case 'list':
-      return block.rows
-        .map((row) => `- ${plainLine((row[0] ?? '').replace(/\r?\n/g, ' '))}`)
-        .join('\n');
-    case 'paragraph':
-      return (block.rows[0]?.[0] ?? '')
-        .split(/\r?\n/)
-        .map(plainLine)
-        .join('\n');
-  }
+  const { header, body } = blockLines(block);
+  return [...header, ...body].join('\n');
 };
 
 /**
