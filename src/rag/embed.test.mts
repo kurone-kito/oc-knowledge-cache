@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   createOllamaEmbedder,
+  EmbeddingUnavailableError,
   type EmbedFetch,
   l2Normalize,
   prefixesFor,
@@ -210,7 +211,11 @@ describe('createOllamaEmbedder', () => {
     const { calls, embedder } = embedderFor(() => failure, { retries: 2 });
     await assert.rejects(
       embedder.embedDocuments(['x']),
-      /Cannot reach Ollama at http:\/\/ollama\.test: connect ECONNREFUSED/,
+      (error: unknown) =>
+        error instanceof EmbeddingUnavailableError &&
+        error.message.includes(
+          'Cannot reach Ollama at http://ollama.test: connect ECONNREFUSED',
+        ),
     );
     assert.equal(calls.length, 3);
   });
@@ -222,8 +227,47 @@ describe('createOllamaEmbedder', () => {
         retries: 1,
       },
     );
-    await assert.rejects(embedder.embedDocuments(['x']), /HTTP 500: boom/);
+    await assert.rejects(
+      embedder.embedDocuments(['x']),
+      (error: unknown) =>
+        !(error instanceof EmbeddingUnavailableError) &&
+        /HTTP 500: boom/.test((error as Error).message),
+    );
     assert.equal(calls.length, 2);
+  });
+
+  it('treats a service that stays busy or gone as unusable, not as a bad text', async () => {
+    for (const status of [429, 502, 503, 504]) {
+      const { calls, embedder } = embedderFor(
+        () => reply(status, { error: 'busy' }),
+        { retries: 1 },
+      );
+      await assert.rejects(
+        embedder.embedDocuments(['x']),
+        (error: unknown) =>
+          error instanceof EmbeddingUnavailableError &&
+          error.message.includes(`HTTP ${status}`),
+        String(status),
+      );
+      assert.equal(calls.length, 2, `retried once for ${status}`);
+    }
+  });
+
+  it('retries a slow or early request but leaves it an ordinary failure of that text', async () => {
+    for (const status of [408, 425]) {
+      const { calls, embedder } = embedderFor(
+        () => reply(status, { error: 'try again' }),
+        { retries: 1 },
+      );
+      await assert.rejects(
+        embedder.embedDocuments(['x']),
+        (error: unknown) =>
+          !(error instanceof EmbeddingUnavailableError) &&
+          (error as Error).message.includes(`HTTP ${status}`),
+        String(status),
+      );
+      assert.equal(calls.length, 2, `retried once for ${status}`);
+    }
   });
 
   it('does not retry client errors', async () => {
@@ -239,7 +283,12 @@ describe('createOllamaEmbedder', () => {
       () => reply(404, { error: "model 'bge-m3' not found" }),
       { model: 'bge-m3' },
     );
-    await assert.rejects(embedder.embedDocuments(['x']), /ollama pull bge-m3/);
+    await assert.rejects(
+      embedder.embedDocuments(['x']),
+      (error: unknown) =>
+        error instanceof EmbeddingUnavailableError &&
+        /ollama pull bge-m3/.test(error.message),
+    );
   });
 
   it('passes a timeout signal with every request', async () => {
