@@ -91,8 +91,12 @@ export class StoreModelMismatchError extends Error {
 
 const SCHEMA_VERSION = '1';
 
-/** Float32 rounding can leave a perfect match a hair below 1. */
+/** Float32 rounding can leave a perfect match a hair away from +1 or -1. */
 const SCORE_EPSILON = 1e-6;
+
+/** A cosine similarity within the Float32 noise of its bounds is on the bound. */
+const snapScore = (score: number): number =>
+  score > 1 - SCORE_EPSILON ? 1 : score < -1 + SCORE_EPSILON ? -1 : score;
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS meta (
@@ -149,6 +153,31 @@ const parseMetadata = (json: string): ChunkMetadata => {
   };
 };
 
+/** How long a reader waits for a store that is still being created. */
+const SCHEMA_WAIT_ATTEMPTS = 10;
+const SCHEMA_WAIT_MS = 50;
+
+/** Blocks the calling thread for a moment (the store API is synchronous). */
+const pause = (ms: number): void => {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+};
+
+const waitForSchema = (db: DatabaseSync, file: string): void => {
+  for (let attempt = 0; attempt < SCHEMA_WAIT_ATTEMPTS; attempt++) {
+    const found = db
+      .prepare("SELECT 1 AS found FROM sqlite_master WHERE name = 'meta'")
+      .get();
+    if (found !== undefined) {
+      return;
+    }
+    pause(SCHEMA_WAIT_MS);
+  }
+  db.close();
+  throw new Error(
+    `The store at ${file} is still being created; try again in a moment`,
+  );
+};
+
 /** Opens (creating when needed) the store in `file`. */
 export const openStore = (
   file: string,
@@ -157,6 +186,7 @@ export const openStore = (
   if (options.readOnly !== true) {
     mkdirSync(dirname(file), { recursive: true });
   }
+  const writable = options.readOnly !== true;
   const db = new DatabaseSync(file, { readOnly: options.readOnly === true });
   try {
     // The default rollback journal (not WAL) keeps a read-only mount usable: WAL
@@ -168,9 +198,6 @@ export const openStore = (
       `PRAGMA busy_timeout = ${options.readOnly === true ? 5000 : 60_000}`,
     );
     db.exec('PRAGMA foreign_keys = ON');
-    if (options.readOnly !== true) {
-      db.exec(SCHEMA);
-    }
   } catch (error) {
     db.close();
     throw error;
@@ -188,13 +215,21 @@ export const openStore = (
     ).run(key, value);
   };
 
+  if (!writable) {
+    // A writer that is creating the store right now has not published its
+    // tables yet: wait a moment instead of failing on a half-made file.
+    waitForSchema(db, file);
+  }
+
   // Reading the model and claiming it for a new store is one step under the
   // write lock: two writers that open an empty store with different models at
   // the same time cannot both win.
-  const writable = options.readOnly !== true;
   try {
     if (writable) {
       db.exec('BEGIN IMMEDIATE');
+      // The tables appear together with the model: a reader never sees a
+      // database that is only partly set up.
+      db.exec(SCHEMA);
     }
     const storedModel = getMeta('embedding_model');
     if (
@@ -278,13 +313,7 @@ export const openStore = (
 
     replaceDocument: (path, sha256, chunks) => {
       requireWritable();
-      const dimension = currentDimension() ?? chunks[0]?.embedding.length;
       for (const chunk of chunks) {
-        if (dimension !== undefined && chunk.embedding.length !== dimension) {
-          throw new Error(
-            `Embedding of ${path} has ${chunk.embedding.length} dimensions, the store holds ${dimension}`,
-          );
-        }
         if (chunk.embedding.length === 0) {
           throw new Error(`Embedding of ${path} is empty`);
         }
@@ -296,6 +325,16 @@ export const openStore = (
       }
       db.exec('BEGIN IMMEDIATE');
       try {
+        // Read under the write lock: another writer may have fixed the
+        // dimension of an empty store a moment ago.
+        const dimension = currentDimension() ?? chunks[0]?.embedding.length;
+        for (const chunk of chunks) {
+          if (dimension !== undefined && chunk.embedding.length !== dimension) {
+            throw new Error(
+              `Embedding of ${path} has ${chunk.embedding.length} dimensions, the store holds ${dimension}`,
+            );
+          }
+        }
         db.prepare('DELETE FROM documents WHERE path = ?').run(path);
         db.prepare(
           'INSERT INTO documents (path, sha256, indexed_at) VALUES (?, ?, ?)',
@@ -326,6 +365,17 @@ export const openStore = (
       const k = searchOptions.k ?? 5;
       if (!Number.isInteger(k) || k < 1) {
         throw new RangeError(`k must be a positive integer, got ${k}`);
+      }
+      if (!query.every(Number.isFinite)) {
+        throw new RangeError('The query contains NaN or infinite values');
+      }
+      if (
+        searchOptions.minScore !== undefined &&
+        !Number.isFinite(searchOptions.minScore)
+      ) {
+        throw new RangeError(
+          `minScore must be a finite number, got ${searchOptions.minScore}`,
+        );
       }
       const dimension = currentDimension();
       if (dimension === undefined) {
@@ -363,10 +413,10 @@ export const openStore = (
       const top: { score: number; row: ChunkRow }[] = [];
       for (const raw of statement.iterate(...params)) {
         const row = raw as unknown as ChunkRow;
-        const score = dot(unit, fromBlob(row.embedding));
+        const score = snapScore(dot(unit, fromBlob(row.embedding)));
         if (
           searchOptions.minScore !== undefined &&
-          score < searchOptions.minScore - SCORE_EPSILON
+          score < searchOptions.minScore
         ) {
           continue;
         }

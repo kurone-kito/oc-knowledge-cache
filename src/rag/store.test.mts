@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { describe, it } from 'node:test';
 import { tempDir } from '../shared/temp.mts';
 import type { ChunkMetadata } from './chunk.mts';
@@ -127,6 +128,15 @@ describe('openStore', () => {
     const fresh = openStore(`${file}.fresh`, { model: 'model-c' });
     assert.equal(fresh.model, 'model-c');
     fresh.close();
+  });
+
+  it('says so when a reader meets a store that is still being created', async (t) => {
+    const empty = join(await tempDir(t), 'empty.sqlite');
+    new DatabaseSync(empty).close();
+    assert.throws(
+      () => openStore(empty, { readOnly: true }),
+      /still being created/,
+    );
   });
 
   it('reads the model from an existing store when none is given', async (t) => {
@@ -380,6 +390,88 @@ describe('search', () => {
       );
     }
     assert.deepEqual(store.search(Float32Array.from([1, 0])), []);
+    store.close();
+  });
+
+  it('refuses a query with NaN or infinite components, also on an empty store', async (t) => {
+    const { store } = await openIn(t);
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      assert.throws(
+        () => store.search(Float32Array.from([1, bad])),
+        /NaN or infinite/,
+      );
+    }
+    store.replaceDocument('a.md', 'a'.repeat(64), [chunk('x', [1, 0])]);
+    assert.throws(
+      () => store.search(Float32Array.from([Number.NaN, 0])),
+      /NaN or infinite/,
+    );
+    store.close();
+  });
+
+  it('keeps scores inside the cosine range, also for identical vectors', async (t) => {
+    const { store } = await openIn(t);
+    const vector = [0.1, 0.7, 0.3, 0.9, 0.2];
+    store.replaceDocument('a.md', 'a'.repeat(64), [chunk('same', vector)]);
+    for (const hit of store.search(Float32Array.from(vector))) {
+      assert.ok(hit.score <= 1 && hit.score >= -1, String(hit.score));
+    }
+    store.close();
+  });
+
+  it('admits a perfect match at the top threshold, and nothing below a threshold', async (t) => {
+    const { store } = await openIn(t);
+    store.replaceDocument('a.md', 'a'.repeat(64), [
+      chunk('same', [1, 1, 1]),
+      chunk('near', [1, 1, 0.9]),
+    ]);
+    const exact = store.search(Float32Array.from([1, 1, 1]), { minScore: 1 });
+    assert.deepEqual(
+      exact.map((hit) => hit.text),
+      ['same'],
+    );
+    assert.equal(exact[0]?.score, 1);
+    const all = store.search(Float32Array.from([1, 1, 1]), { k: 10 });
+    const near = all.find((hit) => hit.text === 'near')?.score ?? 0;
+    // A threshold just above the near hit's score excludes it.
+    const above = store.search(Float32Array.from([1, 1, 1]), {
+      k: 10,
+      minScore: near + 1e-9,
+    });
+    assert.deepEqual(
+      above.map((hit) => hit.text),
+      ['same'],
+    );
+    store.close();
+  });
+
+  it('refuses vectors of another size than the one a second writer fixed', async (t) => {
+    const { file, store } = await openIn(t, 'model-a');
+    const other = openStore(file, { model: 'model-a' });
+    other.replaceDocument('b.md', 'b'.repeat(64), [chunk('three', [1, 0, 0])]);
+    assert.throws(
+      () =>
+        store.replaceDocument('a.md', 'a'.repeat(64), [chunk('two', [1, 0])]),
+      /2 dimensions, the store holds 3/,
+    );
+    other.close();
+    store.close();
+  });
+
+  it('rejects a minimum score that is not a finite number', async (t) => {
+    const { store } = await openIn(t);
+    store.replaceDocument('a.md', 'a'.repeat(64), [chunk('x', [1, 0])]);
+    for (const minScore of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      assert.throws(
+        () => store.search(Float32Array.from([1, 0]), { minScore }),
+        RangeError,
+        String(minScore),
+      );
+    }
+    assert.equal(
+      store.search(Float32Array.from([1, 0]), { minScore: 0.5 }).length,
+      1,
+    );
     store.close();
   });
 
