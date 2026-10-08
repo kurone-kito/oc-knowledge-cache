@@ -5,6 +5,7 @@ Experiment on non-volatile caching of knowledge using OpenClaw
 ## System Requirements
 
 - Node.js: Latest (`>=26.0.0`)
+- mise-en-place
 
 ## Development
 
