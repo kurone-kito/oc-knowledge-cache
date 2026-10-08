@@ -79,7 +79,9 @@ const main = async (): Promise<number> => {
       ),
       model,
     });
-    const minScore = optionalNumber('min-score', values['min-score']);
+    const minScore = optionalNumber('min-score', values['min-score'], {
+      max: 1,
+    });
     const hits = await searchKnowledge(store, embedder, question, {
       k: optionalNumber('k', values.k, { integer: true, min: 1 }) ?? 5,
       ...(values.path === undefined ? {} : { pathPrefix: values.path }),
