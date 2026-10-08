@@ -40,7 +40,7 @@ directly versus needing an adapter.
 
 ## Onboarding detection
 
-When the repository name is not `pnpm-project-template` and the AI
+When the repository name is not `oc-knowledge-cache` and the AI
 instruction files still contain the generic sentinel phrase, AI agents
 should proactively propose a customization workflow. This keeps the
 template's "vibe-coding ready" promise alive in derived projects by

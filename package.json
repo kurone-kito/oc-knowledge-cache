@@ -1,16 +1,16 @@
 {
-  "name": "@kurone-kito/pnpm-project-template",
+  "name": "@kurone-kito/oc-knowledge-cache",
   "version": "0.1.0",
   "private": true,
-  "description": "The boilerplate project of the Node.js",
+  "description": "Experiment on non-volatile caching of knowledge using OpenClaw",
   "keywords": [
     "boilerplate",
     "pnpm",
     "template"
   ],
-  "homepage": "https://github.com/kurone-kito/pnpm-project-template#readme",
-  "bugs": "https://github.com/kurone-kito/pnpm-project-template/issues",
-  "repository": "github:kurone-kito/pnpm-project-template",
+  "homepage": "https://github.com/kurone-kito/oc-knowledge-cache#readme",
+  "bugs": "https://github.com/kurone-kito/oc-knowledge-cache/issues",
+  "repository": "github:kurone-kito/oc-knowledge-cache",
   "license": "MIT",
   "author": "kurone-kito <krone@kit.black> (https://kit.black/)",
   "type": "module",
@@ -47,7 +47,7 @@
   },
   "packageManager": "pnpm@12.10.1+sha512.ba40a37eb1a370d60fea8c4cf1d364c13bcccef518e98ad2bcee954f539d38da37458e58261a3fa55e06523450ea0ffff9f497b135be41f2c15c1642bacace6c",
   "engines": {
-    "node": "^22.23.3 || ^24.2.0 || >=26.0.0"
+    "node": ">=26.0.0"
   },
   "publishConfig": {
     "access": "public"

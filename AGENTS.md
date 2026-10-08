@@ -340,7 +340,7 @@ repository is the **base template** or a **derived project**:
 1. **Check the repository name** — inspect the git remote URL
    (e.g., `git remote get-url origin`), the working-directory name,
    or any GitHub API context available to the agent. If the
-   repository name is exactly `pnpm-project-template`, treat it as
+   repository name is exactly `oc-knowledge-cache`, treat it as
    the base template. Any other name indicates a derived project.
 2. **Check for generic content** — look for the sentinel phrase
    `generic Node.js project template using pnpm` in this file or
