@@ -1,56 +1,6 @@
-# 📄 PNPM project template
+# 📚 oc-knowledge-cache
 
-## Features
-
-- AI agent guidance with a single canonical guide and thin
-  per-harness adapters
-  ([canonical guide](AGENTS.md),
-  [Claude Code adapter](CLAUDE.md),
-  [Gemini CLI adapter](GEMINI.md),
-  [GitHub Copilot adapter](.github/copilot-instructions.md),
-  [strategy notes](docs/ai-strategy.md))
-- PNPM
-- TypeScript
-- Biome
-- Commitlint with Husky
-- [Conventional Commits](https://www.conventionalcommits.org/)
-- Visual Studio Code / Vim ready
-- CI configurations
-  - CodeRabbit
-  - Dependabot
-  - GitHub Actions
-
-## How to use this template
-
-You can create a new project by using `degit` or the “Use this template”
-button on GitHub.
-
-```sh
-npx degit kurone-kito/oc-knowledge-cache my-project
-cd my-project
-pnpm install
-```
-
-### Additional configurations
-
-- Update `package.json` fields:
-  - `name`: The name of your project.
-  - `description`: A brief description of your project.
-  - `author`: Your name or organization.
-  - `license`: The license for your project (default is MIT).
-  - `homepage`: The homepage URL for your project.
-  - `repository`: The repository URL for your project.
-  - `bugs`: The URL for reporting issues.
-- Edit or remove `.github/CODEOWNERS` as needed.
-- Review `docs/ai-strategy.md`, then update `AGENTS.md` to reflect
-  your project specifics. `CLAUDE.md`, `GEMINI.md`, and
-  `.github/copilot-instructions.md` rarely need changes, since they
-  import or reference `AGENTS.md` instead of duplicating it.
-
-### Usecase
-
-When you want to create a monorepo project, you should use the
-[pnpm-workspace-template](https://github.com/kurone-kito/pnpm-workspace-template).
+Experiment on non-volatile caching of knowledge using OpenClaw
 
 ## System Requirements
 

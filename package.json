@@ -2,7 +2,7 @@
   "name": "@kurone-kito/oc-knowledge-cache",
   "version": "0.1.0",
   "private": true,
-  "description": "The boilerplate project of the Node.js",
+  "description": "Experiment on non-volatile caching of knowledge using OpenClaw",
   "keywords": [
     "boilerplate",
     "pnpm",
