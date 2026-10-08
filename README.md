@@ -17,6 +17,8 @@ this machine).
 pnpm run ingest --source <NAS share>   # scan, convert, embed and store
 pnpm run kc:search "<question>"          # ask the cache
 pnpm run openclaw:generate              # write the two OpenClaw profiles
+pnpm run provision plan                 # what this machine is missing
+pnpm run provision apply                # pull the models, write the profiles
 ```
 
 Run any command with `--help` for its options. The design is in
