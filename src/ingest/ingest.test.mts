@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { describe, it } from 'node:test';
 import ExcelJS from 'exceljs';
 import { loadManifest } from '../nas/manifest.mts';
+import { realScanIo, type ScanIo } from '../nas/scan.mts';
 import { type Embedder, EmbeddingUnavailableError } from '../rag/embed.mts';
 import { searchKnowledge } from '../rag/search.mts';
 import { openStore, StoreModelMismatchError } from '../rag/store.mts';
@@ -404,6 +406,269 @@ describe('ingest', () => {
     const allowed = await run(ws, fakeEmbedder(), { allowEmpty: true });
     assert.equal(allowed.outcomes.length, 3);
     assert.equal(allowed.stats?.documents, 0);
+  });
+
+  it('also refuses an empty share when only the store was lost', async (t) => {
+    const ws = await workspace(t);
+    await seed(ws);
+    await run(ws, fakeEmbedder());
+    await rm(join(ws.dataDir, 'store.sqlite'));
+    await rm(ws.source, { force: true, recursive: true });
+    await putFile(ws.source, 'placeholder.png', 'x');
+
+    await assert.rejects(
+      run(ws, fakeEmbedder()),
+      /3 files were indexed before.*mounted/,
+    );
+    await assert.rejects(
+      run(ws, undefined, { dryRun: true }),
+      /3 files were indexed before/,
+    );
+    const allowed = await run(ws, fakeEmbedder(), { allowEmpty: true });
+    assert.equal(allowed.stats?.documents, 0);
+  });
+
+  it('also refuses an empty share when only the manifest was lost', async (t) => {
+    const ws = await workspace(t);
+    await seed(ws);
+    await run(ws, fakeEmbedder());
+    await rm(join(ws.dataDir, 'manifest.json'));
+    await rm(ws.source, { force: true, recursive: true });
+    await putFile(ws.source, 'placeholder.png', 'x');
+
+    await assert.rejects(run(ws, fakeEmbedder()), /holds 3 documents.*mounted/);
+    const store = openStore(join(ws.dataDir, 'store.sqlite'), {
+      readOnly: true,
+    });
+    assert.equal(store.stats().documents, 3, 'nothing was deleted');
+    store.close();
+  });
+
+  it('keeps stored documents that cannot be read right now, even without a manifest', async (t) => {
+    const ws = await workspace(t);
+    await seed(ws);
+    await run(ws, fakeEmbedder());
+    await rm(join(ws.dataDir, 'manifest.json'));
+
+    const scanIo: ScanIo = {
+      ...realScanIo,
+      readdir: async (directory) => {
+        if (directory.endsWith('notes')) {
+          throw new Error('EIO: unreadable');
+        }
+        return realScanIo.readdir(directory);
+      },
+    };
+    const report = await ingest(
+      { dataDir: ws.dataDir, source: ws.source },
+      fakeEmbedder(),
+      { scanIo },
+    );
+
+    assert.deepEqual(
+      report.outcomes.filter((o) => o.action === 'removed'),
+      [],
+      'documents under the unreadable folder are kept',
+    );
+    assert.deepEqual(
+      report.unreadable.map((e) => e.path),
+      ['notes'],
+    );
+    assert.equal(report.stats?.documents, 3);
+  });
+
+  it('redoes every file when the conversion settings change, and only then', async (t) => {
+    const ws = await workspace(t);
+    await seed(ws);
+    await run(ws, fakeEmbedder(), { chunk: { maxChars: 400 } });
+
+    const same = fakeEmbedder();
+    const unchanged = await run(ws, same, { chunk: { maxChars: 400 } });
+    assert.equal(unchanged.reprocessAll, false);
+    assert.deepEqual(unchanged.outcomes, []);
+    assert.equal(same.batches.length, 0);
+
+    const hiddenPlan = await run(ws, undefined, {
+      dryRun: true,
+      includeHidden: true,
+      chunk: { maxChars: 400 },
+    });
+    assert.equal(hiddenPlan.reprocessAll, true);
+    assert.equal(hiddenPlan.outcomes.length, 3);
+
+    const changed = fakeEmbedder();
+    const redone = await run(ws, changed, {
+      includeHidden: true,
+      chunk: { maxChars: 400 },
+    });
+    assert.equal(redone.reprocessAll, true);
+    assert.equal(redone.outcomes.filter((o) => o.status === 'ok').length, 3);
+    assert.equal(changed.batches.length, 3);
+
+    const settled = fakeEmbedder();
+    const after = await run(ws, settled, {
+      includeHidden: true,
+      chunk: { maxChars: 400 },
+    });
+    assert.equal(after.reprocessAll, false);
+    assert.equal(settled.batches.length, 0);
+
+    const resized = await run(ws, undefined, {
+      dryRun: true,
+      includeHidden: true,
+      chunk: { maxChars: 800 },
+    });
+    assert.equal(resized.reprocessAll, true, 'a new chunk size counts too');
+  });
+
+  it('lets a dry run that does not state the chunk size compare only what it states', async (t) => {
+    const ws = await workspace(t);
+    await seed(ws);
+    await run(ws, fakeEmbedder(), {
+      chunk: { maxChars: 400, overlapChars: 80 },
+    });
+
+    const quiet = await run(ws, undefined, { dryRun: true });
+    assert.equal(quiet.reprocessAll, false);
+    assert.deepEqual(quiet.outcomes, []);
+
+    const sameSize = await run(ws, undefined, {
+      chunk: { maxChars: 400 },
+      dryRun: true,
+    });
+    assert.equal(sameSize.reprocessAll, false);
+
+    const otherSize = await run(ws, undefined, {
+      chunk: { maxChars: 500 },
+      dryRun: true,
+    });
+    assert.equal(otherSize.reprocessAll, true);
+
+    const hidden = await run(ws, undefined, {
+      dryRun: true,
+      includeHidden: true,
+    });
+    assert.equal(hidden.reprocessAll, true);
+  });
+
+  it('compares what a real run really uses, even when it states no chunk size', async (t) => {
+    const ws = await workspace(t);
+    await seed(ws);
+    await run(ws, fakeEmbedder(), { chunk: { maxChars: 400 } });
+
+    // Without a stated size the chunker's defaults apply: that is a change.
+    const redone = fakeEmbedder();
+    const report = await run(ws, redone);
+    assert.equal(report.reprocessAll, true);
+    assert.equal(redone.batches.length, 3);
+
+    const settled = fakeEmbedder();
+    const again = await run(ws, settled);
+    assert.equal(again.reprocessAll, false);
+    assert.equal(settled.batches.length, 0);
+
+    // A dry run that states nothing still compares only what it states.
+    const quiet = await run(ws, undefined, { dryRun: true });
+    assert.equal(quiet.reprocessAll, false);
+  });
+
+  it('does not rebuild for chunk options that chunk alike', async (t) => {
+    const ws = await workspace(t);
+    await seed(ws);
+    await run(ws, fakeEmbedder(), {
+      chunk: { maxChars: 100, overlapChars: 81 },
+    });
+
+    const same = fakeEmbedder();
+    const report = await run(ws, same, {
+      chunk: { maxChars: 100, overlapChars: 25 },
+    });
+    assert.equal(report.reprocessAll, false, 'overlap is capped at a quarter');
+    const smaller = await run(ws, fakeEmbedder(), {
+      chunk: { maxChars: 40, overlapChars: 25 },
+    });
+    assert.equal(smaller.reprocessAll, false, 'sizes below 100 count as 100');
+    assert.equal(same.batches.length, 0);
+  });
+
+  it('rebuilds a cache that never recorded its settings, once', async (t) => {
+    const ws = await workspace(t);
+    await seed(ws);
+    await run(ws, fakeEmbedder());
+    const database = new DatabaseSync(join(ws.dataDir, 'store.sqlite'));
+    database.exec("DELETE FROM meta WHERE key = 'setting:ingest'");
+    database.close();
+
+    const rebuilt = fakeEmbedder();
+    const report = await run(ws, rebuilt);
+    assert.equal(report.reprocessAll, true);
+    assert.equal(rebuilt.batches.length, 3);
+
+    const settled = fakeEmbedder();
+    assert.equal((await run(ws, settled)).reprocessAll, false);
+    assert.equal(settled.batches.length, 0);
+  });
+
+  it('does not record new settings while some stored documents could not be read', async (t) => {
+    const ws = await workspace(t);
+    await seed(ws);
+    await run(ws, fakeEmbedder(), { chunk: { maxChars: 400 } });
+
+    const scanIo: ScanIo = {
+      ...realScanIo,
+      readdir: async (directory) => {
+        if (directory.endsWith('notes')) {
+          throw new Error('EIO: unreadable');
+        }
+        return realScanIo.readdir(directory);
+      },
+    };
+    const partial = await ingest(
+      {
+        chunk: { maxChars: 500 },
+        dataDir: ws.dataDir,
+        source: ws.source,
+      },
+      fakeEmbedder(),
+      { scanIo },
+    );
+    assert.equal(partial.reprocessAll, true);
+    assert.deepEqual(
+      partial.unreadable.map((e) => e.path),
+      ['notes'],
+    );
+
+    const later = await run(ws, undefined, {
+      chunk: { maxChars: 500 },
+      dryRun: true,
+    });
+    assert.equal(
+      later.reprocessAll,
+      true,
+      'the unread documents still have the old settings, so everything is redone',
+    );
+  });
+
+  it('does not trust new settings after a run in which a file failed', async (t) => {
+    const ws = await workspace(t);
+    await putFile(ws.source, 'a.md', 'alpha');
+    await run(ws, fakeEmbedder(), { chunk: { maxChars: 400 } });
+
+    const flaky = fakeEmbedder('fake-embed', () => {
+      throw new Error('embedding exploded');
+    });
+    const failed = await run(ws, flaky, { chunk: { maxChars: 500 } });
+    assert.equal(failed.failed, 1);
+
+    const again = await run(ws, undefined, {
+      dryRun: true,
+      chunk: { maxChars: 500 },
+    });
+    assert.equal(
+      again.reprocessAll,
+      true,
+      'the old settings are still recorded',
+    );
   });
 
   it('reports progress for every file', async (t) => {

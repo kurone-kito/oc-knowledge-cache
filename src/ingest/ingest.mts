@@ -7,11 +7,15 @@ import {
   type ManifestEntry,
   saveManifest,
 } from '../nas/manifest.mts';
-import type { ScanError } from '../nas/scan.mts';
-import type { ChunkOptions } from '../rag/chunk.mts';
+import type { ScanError, ScanIo } from '../nas/scan.mts';
+import { type ChunkOptions, resolveLimits } from '../rag/chunk.mts';
 import { type Embedder, EmbeddingUnavailableError } from '../rag/embed.mts';
 import { openStore, type StoreStats, type VectorStore } from '../rag/store.mts';
-import { type LoadResult, loadDocument } from './documents.mts';
+import {
+  CONVERTER_VERSION,
+  type LoadResult,
+  loadDocument,
+} from './documents.mts';
 
 export type IngestAction = 'added' | 'changed' | 'removed';
 
@@ -47,6 +51,8 @@ export interface IngestReport {
   /** Entries that could not be read this time; their stored state is kept. */
   readonly unreadable: readonly ScanError[];
   readonly dryRun: boolean;
+  /** The settings changed since the cache was built, so every file is redone. */
+  readonly reprocessAll: boolean;
   /** Why the run stopped early, e.g. Ollama is unreachable. */
   readonly aborted: string | undefined;
   readonly failed: number;
@@ -75,6 +81,8 @@ export interface IngestDeps {
     absolutePath: string,
     relativePath: string,
   ) => Promise<LoadResult>;
+  /** File system access of the scan, to simulate unreadable folders. */
+  readonly scanIo?: ScanIo;
   /** Persist the manifest at least this often (default 5 s). */
   readonly saveEveryMs?: number;
   readonly now?: () => number;
@@ -86,6 +94,8 @@ interface PlannedFile {
 }
 
 interface Analysis {
+  /** The settings that produced the cache differ, so every file is redone. */
+  readonly settingsChanged: boolean;
   readonly previous: Manifest;
   readonly current: Manifest;
   readonly plan: readonly PlannedFile[];
@@ -115,20 +125,114 @@ const confirmedBy = (
   version: 1,
 });
 
+/** What the store tells the analysis. */
+type Indexed = Pick<VectorStore, 'listDocuments' | 'getSetting'>;
+
+const NOTHING_INDEXED: Indexed = {
+  getSetting: () => undefined,
+  listDocuments: () => [],
+};
+
+/** Name under which the store remembers how its documents were produced. */
+const SETTINGS_KEY = 'ingest';
+
+/** Everything besides the file content that changes what ends up in the store. */
+interface Settings {
+  readonly converter: number;
+  readonly includeHidden: boolean;
+  /** Null when this run does not say (a dry run that derives nothing). */
+  readonly maxChars: number | null;
+  readonly overlapChars: number | null;
+}
+
+/**
+ * The settings of a run, as the limits that chunking really works with (sizes
+ * that chunk alike are the same setting). A real run without a stated chunk
+ * size produces chunks with the chunker's defaults, and that is what it
+ * records; only a dry run may leave a size open, because it derives none
+ * without Ollama.
+ */
+const settingsOf = (
+  options: Pick<IngestOptions, 'includeHidden' | 'chunk' | 'dryRun'>,
+): Settings => {
+  const effective = resolveLimits(options.chunk ?? {});
+  const open = options.dryRun === true;
+  return {
+    converter: CONVERTER_VERSION,
+    includeHidden: options.includeHidden === true,
+    maxChars:
+      open && options.chunk?.maxChars === undefined ? null : effective.max,
+    overlapChars:
+      open && options.chunk?.overlapChars === undefined
+        ? null
+        : effective.overlap,
+  };
+};
+
+/**
+ * How the store's documents were produced, as the text kept in the store. A
+ * cache built with other settings is rebuilt instead of silently reused.
+ */
+export const settingsFingerprint = (
+  options: Pick<IngestOptions, 'includeHidden' | 'chunk' | 'dryRun'>,
+): string => JSON.stringify(settingsOf(options));
+
+/**
+ * Whether the recorded settings differ from this run's. The chunk size is
+ * derived from the embedding model in a real run, so a run that does not
+ * state it (a dry run without Ollama) compares only what it does state.
+ */
+const settingsDiffer = (
+  recorded: string,
+  options: Pick<IngestOptions, 'includeHidden' | 'chunk' | 'dryRun'>,
+): boolean => {
+  let before: Partial<Settings>;
+  try {
+    before = JSON.parse(recorded) as Partial<Settings>;
+  } catch {
+    return true;
+  }
+  const now = settingsOf(options);
+  return (
+    before.converter !== now.converter ||
+    before.includeHidden !== now.includeHidden ||
+    (now.maxChars !== null && before.maxChars !== now.maxChars) ||
+    (now.overlapChars !== null && before.overlapChars !== now.overlapChars)
+  );
+};
+
 /** Works out what has to be done, without changing anything. */
 const analyse = async (
   options: IngestOptions,
   manifestFile: string,
-  documents: Pick<VectorStore, 'listDocuments'>,
+  documents: Indexed,
+  scanIo?: ScanIo,
 ): Promise<Analysis> => {
   const stored = new Map(
     documents.listDocuments().map((doc) => [doc.path, doc.sha256]),
   );
-  const previous = confirmedBy(await loadManifest(manifestFile), stored);
+  const indexedWith = documents.getSetting(SETTINGS_KEY);
+  // A cache that holds documents but never recorded how they were made cannot
+  // be trusted either: it is rebuilt once, and then the settings are known.
+  const settingsChanged =
+    indexedWith === undefined
+      ? stored.size > 0
+      : settingsDiffer(indexedWith, options);
+  // With changed settings nothing the store holds counts as up to date.
+  const upToDate: ReadonlyMap<string, string> = settingsChanged
+    ? new Map()
+    : stored;
+
+  const loaded = await loadManifest(manifestFile);
+  const previous = confirmedBy(loaded, upToDate);
+  // Files the manifest knew about count too: a deleted store must not make an
+  // empty share look acceptable.
+  const indexedBefore = Object.keys(loaded.entries).length;
   const { current, diff, errors } = await scanChanges(
     options.source,
     previous,
     {
+      ...(scanIo === undefined ? {} : { io: scanIo }),
       ...(options.allowEmpty === undefined
         ? {}
         : { allowEmpty: options.allowEmpty }),
@@ -138,15 +242,38 @@ const analyse = async (
         : { extensions: options.extensions }),
     },
   );
+  // The manifest may be gone while the store still holds documents; an empty
+  // or unmounted share must not wipe them either.
+  if (
+    (stored.size > 0 || indexedBefore > 0) &&
+    Object.keys(current.entries).length === 0 &&
+    errors.length === 0 &&
+    options.allowEmpty !== true
+  ) {
+    const known =
+      stored.size > 0
+        ? `the cache holds ${stored.size} documents`
+        : `${indexedBefore} files were indexed before`;
+    throw new Error(
+      `No files found under ${options.source} although ${known}; is the share mounted? Pass allowEmpty to accept it.`,
+    );
+  }
+  const unreadable = (path: string): boolean =>
+    errors.some((error) =>
+      error.kind === 'directory'
+        ? path === error.path || path.startsWith(`${error.path}/`)
+        : path === error.path,
+    );
   // The store is the truth for what is indexed: whatever it holds that is no
-  // longer in the source goes, even if the manifest never knew about it.
+  // longer in the source goes, even if the manifest never knew about it. What
+  // could not be read right now stays until it can be.
   const removed = [...stored.keys()]
-    .filter((path) => current.entries[path] === undefined)
+    .filter((path) => current.entries[path] === undefined && !unreadable(path))
     .sort();
   // A file the store already holds in this exact version needs no work, even
   // when the manifest lost track of it.
   const inSync = (path: string): boolean =>
-    stored.get(path) === current.entries[path]?.sha256;
+    upToDate.get(path) === current.entries[path]?.sha256;
   return {
     current,
     plan: [
@@ -159,6 +286,7 @@ const analyse = async (
         .map((path) => ({ action: 'changed' as const, path })),
     ],
     previous,
+    settingsChanged,
     unchanged: [
       ...diff.unchanged,
       ...diff.added.filter(inSync),
@@ -195,7 +323,8 @@ export const ingest = async (
       const analysis = await analyse(
         options,
         manifestFile,
-        store ?? { listDocuments: () => [] },
+        store ?? NOTHING_INDEXED,
+        deps.scanIo,
       );
       return {
         aborted: undefined,
@@ -208,6 +337,7 @@ export const ingest = async (
           path,
           status: 'planned' as const,
         })),
+        reprocessAll: analysis.settingsChanged,
         stats: undefined,
         unchanged: analysis.unchanged.length,
         unreadable: analysis.unreadable,
@@ -229,7 +359,7 @@ export const ingest = async (
       embedder,
       store,
       manifestFile,
-      await analyse(options, manifestFile, store),
+      await analyse(options, manifestFile, store, deps.scanIo),
     );
   } finally {
     store.close();
@@ -242,7 +372,7 @@ const apply = async (
   embedder: Embedder,
   store: VectorStore,
   manifestFile: string,
-  { current, plan, previous, unchanged, unreadable }: Analysis,
+  { current, plan, previous, settingsChanged, unchanged, unreadable }: Analysis,
 ): Promise<IngestReport> => {
   const now = deps.now ?? Date.now;
   const saveEveryMs = deps.saveEveryMs ?? 5000;
@@ -253,6 +383,15 @@ const apply = async (
         ...(options.chunk === undefined ? {} : { chunk: options.chunk }),
         includeHidden: options.includeHidden === true,
       }));
+
+  // Everything an empty store ever holds is made by this run's settings, so
+  // they can be recorded at once, even if the run does not finish.
+  if (
+    store.getSetting(SETTINGS_KEY) === undefined &&
+    store.listDocuments().length === 0
+  ) {
+    store.setSetting(SETTINGS_KEY, settingsFingerprint(options));
+  }
 
   // The manifest follows the store: it starts from what the store confirmed,
   // and each file is added or dropped only after its own transaction.
@@ -356,11 +495,21 @@ const apply = async (
     }
   }
 
+  const failed = outcomes.filter((o) => o.status === 'failed').length;
+  // Remember the settings only when everything planned went through, so a
+  // cache that is only partly redone is redone again instead of being trusted.
+  // A document that could not be read keeps its old chunks, so it must not
+  // be trusted under the new settings either.
+  if (aborted === undefined && failed === 0 && unreadable.length === 0) {
+    store.setSetting(SETTINGS_KEY, settingsFingerprint(options));
+  }
+
   return {
     aborted,
     dryRun: false,
-    failed: outcomes.filter((o) => o.status === 'failed').length,
+    failed,
     outcomes,
+    reprocessAll: settingsChanged,
     stats: store.stats(),
     unchanged: unchanged.length,
     unreadable,

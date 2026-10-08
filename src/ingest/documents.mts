@@ -21,6 +21,12 @@ export interface LoadOptions {
   readonly chunk?: ChunkOptions;
 }
 
+/**
+ * Raise this whenever the conversion or chunking changes what a file turns
+ * into, so existing caches are rebuilt instead of keeping the old output.
+ */
+export const CONVERTER_VERSION = 1;
+
 const WORKBOOK_EXTENSIONS = new Set(['.xlsx', '.xlsm']);
 const TEXT_EXTENSIONS = new Set(['.md', '.markdown', '.txt']);
 

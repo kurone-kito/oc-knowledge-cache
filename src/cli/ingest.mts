@@ -69,6 +69,11 @@ const summarize = (report: IngestReport): string => {
         `${count('not-attempted')} not attempted`,
       ];
   const lines = [
+    ...(report.reprocessAll
+      ? [
+          'The conversion settings changed since the cache was built, so every file is processed again.',
+        ]
+      : []),
     `${parts.join(', ')}; ${report.unchanged} unchanged.`,
     ...report.unreadable.map(
       (e) => `could not read ${e.path}: ${e.message} (kept as it was)`,
@@ -196,7 +201,12 @@ const main = async (): Promise<number> => {
     }
     process.stdout.write(summarize(report));
   }
-  return report.failed > 0 || report.aborted !== undefined ? 2 : 0;
+  // Anything that was not fully processed is not a plain success.
+  return report.failed > 0 ||
+    report.aborted !== undefined ||
+    report.unreadable.length > 0
+    ? 2
+    : 0;
 };
 
 main().then(
