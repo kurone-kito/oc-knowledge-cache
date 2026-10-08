@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { detectHardware } from '../models/hardware.mts';
@@ -7,19 +6,18 @@ import {
   resolveOllamaBaseUrl,
 } from '../models/ollama.mts';
 import { recommendModels } from '../models/recommend.mts';
+import { prepareProfiles } from '../openclaw/generate.mts';
 import { realPathOf } from '../openclaw/paths.mts';
 import {
-  buildProfiles,
   DEFAULT_CONTEXT_WINDOW,
   DEFAULT_PORTS,
-  type ProfileSet,
 } from '../openclaw/profiles.mts';
 import { startCommands } from '../openclaw/shell.mts';
 import {
   resolveOpenClawCommand,
   validateWithOpenClaw,
 } from '../openclaw/validate.mts';
-import { readExistingTokens, writeProfiles } from '../openclaw/write.mts';
+import { writeProfiles } from '../openclaw/write.mts';
 import { optionalNumber, scriptArgs } from './options.mts';
 
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -52,8 +50,6 @@ Options:
   --dry-run               print what would be written, without writing
   -h, --help              show this help
 `;
-
-const newToken = (): string => randomBytes(24).toString('base64url');
 
 const main = async (): Promise<number> => {
   const { values } = parseArgs({
@@ -153,19 +149,7 @@ const main = async (): Promise<number> => {
     ...(contextWindow === undefined ? {} : { contextWindow }),
   };
 
-  // Keep the tokens of an earlier run so running gateways and clients stay valid.
-  const draft = buildProfiles({
-    ...base,
-    tokens: { knowledge: newToken(), web: newToken() },
-  });
-  const existing = await readExistingTokens(draft);
-  const set: ProfileSet = buildProfiles({
-    ...base,
-    tokens: {
-      knowledge: existing.knowledge ?? newToken(),
-      web: existing.web ?? newToken(),
-    },
-  });
+  const set = await prepareProfiles(base);
 
   if (values['dry-run']) {
     process.stdout.write(
