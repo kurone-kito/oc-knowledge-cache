@@ -19,6 +19,7 @@
   "scripts": {
     "clean": "rimraf -g \"*.tgz\" \"*.tsbuildinfo\" node_modules/.cache",
     "excel:convert": "node src/cli/excel-convert.mts",
+    "kc:search": "node src/cli/kc-search.mts",
     "lint": "pnpm run --stream \"/lint:check:.+/\"",
     "lint:check:biome": "biome check",
     "lint:check:cspell": "cspell lint --show-suggestions .",
