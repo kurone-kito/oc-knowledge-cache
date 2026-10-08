@@ -137,7 +137,11 @@ ports are yours to choose: a valid port you set by hand is kept when the
 profiles are generated again, and only a missing or unusable one (not a
 number, below 1024, or too close to the other gateway) is repaired.
 
-Profiles are only generated while Ollama is reachable and, if their agent
+Something in the way of a generated file (a link, or a file or folder of the
+wrong kind) is listed as a MANUAL step: a person removes it, and nothing is
+written over it. If the model list cannot be read, the plan says what Ollama
+answered instead of only asking you to start it. Profiles are only generated
+while Ollama is reachable and, if their agent
 model has to be pulled first, only after that pull succeeded. A failed
 embedding pull does not hold them back. A model download that goes silent for
 two minutes (`--pull-idle-timeout`) fails instead of hanging.

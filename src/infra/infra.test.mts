@@ -320,9 +320,18 @@ describe('gatherState', () => {
       }),
     );
     assert.equal(state.ollamaReachable, false);
+    // The reason is kept, so that the plan can tell a server that is down
+    // from one that is up and failing.
+    assert.equal(state.ollamaError, 'ECONNREFUSED');
     assert.deepEqual(state.installedModels, []);
     assert.equal(state.openclawVersion, undefined);
     assert.equal(state.storeModel, undefined);
+  });
+
+  it('has no Ollama error when the model list was read', async () => {
+    const state = await gatherState(paths, probe());
+    assert.equal(state.ollamaReachable, true);
+    assert.equal(state.ollamaError, undefined);
   });
 
   it('reports the model of an existing cache', async () => {
@@ -398,24 +407,31 @@ describe('applyPlan', () => {
     assert.match(report.failed[0]?.error ?? '', /disk full/);
   });
 
-  it('does not let a failed embedding pull of the same tag block the profiles', async () => {
-    const { calls, deps } = recorder();
-    let pulls = 0;
+  it('pulls a tag chosen for both roles once, and lets that one pull decide', async () => {
     const plan = computePlan(emptyMachine, {
       agentModel: 'shared:latest',
       embeddingModel: 'shared:latest',
     });
-    assert.equal(plan.actions.filter((a) => a.kind === 'pull-model').length, 2);
-    const report = await applyPlan(plan, {
-      ...deps,
+    assert.equal(plan.actions.filter((a) => a.kind === 'pull-model').length, 1);
+
+    const ok = recorder();
+    const done = await applyPlan(plan, ok.deps);
+    assert.deepEqual(ok.calls, ['pull shared:latest', 'render shared:latest']);
+    assert.equal(done.failed.length, 0);
+
+    const broken = recorder();
+    const failed = await applyPlan(plan, {
+      ...broken.deps,
       pull: async () => {
-        if (++pulls === 2) {
-          throw new Error('embedding pull failed');
-        }
+        throw new Error('pull failed');
       },
     });
-    assert.equal(report.failed.length, 1);
-    assert.deepEqual(calls, ['render shared:latest']);
+    assert.equal(failed.failed.length, 1);
+    assert.deepEqual(
+      broken.calls,
+      [],
+      'no profiles for a model that is not there',
+    );
   });
 
   it('does not generate profiles for an agent model that could not be pulled', async () => {
@@ -604,7 +620,7 @@ describe('profiles on disk', () => {
       t.skip('file links cannot be created here');
       return;
     }
-    assert.ok((await look()).problems.some((p) => /is a link/.test(p)));
+    assert.ok((await look()).blockers?.some((p) => /is a link/.test(p)));
   });
 
   it('reports a folder where a config belongs, and a loop in the project directory, instead of failing', async (t) => {
@@ -618,7 +634,7 @@ describe('profiles on disk', () => {
     await mkdir(web);
     const folder = await look();
     assert.ok(
-      folder.problems.some((p) =>
+      folder.blockers?.some((p) =>
         /openclaw.json cannot be read as a file/.test(p),
       ),
     );
@@ -631,7 +647,7 @@ describe('profiles on disk', () => {
     await writeFile(skills, 'not a folder');
     const parent = await look();
     assert.ok(
-      parent.problems.some((p) =>
+      parent.blockers?.some((p) =>
         /cannot be (read as a file|listed as a folder)/.test(p),
       ),
     );
@@ -953,6 +969,63 @@ describe('profiles on disk', () => {
     );
   });
 
+  it('reports a linked profile folder even before any config exists', async (t) => {
+    const root = await tempDir(t);
+    const paths = {
+      dataDir: join(root, 'data'),
+      outDir: join(root, 'openclaw'),
+    };
+    await mkdir(paths.outDir, { recursive: true });
+    await mkdir(join(root, 'elsewhere'));
+    try {
+      await symlink(
+        join(root, 'elsewhere'),
+        join(paths.outDir, 'web'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+    } catch {
+      t.skip('links cannot be created here');
+      return;
+    }
+    const state = await gatherState(
+      paths,
+      probe({ readText: systemProbe(URL).readText }),
+    );
+    assert.deepEqual(state.profiles.problems, [
+      'the OpenClaw profiles have not been generated',
+    ]);
+    assert.ok(state.profiles.blockers?.some((p) => /is a link/.test(p)));
+    // The plan asks a person to clear it, and offers no generation over it.
+    const plan = computePlan(state, { ollamaUrl: URL });
+    assert.ok(
+      plan.actions.some(
+        (a) => a.kind === 'manual' && a.topic === 'fix-profile-path',
+      ),
+    );
+    assert.ok(!plan.actions.some((a) => a.kind === 'render-profiles'));
+  });
+
+  it('reports a plain file where a workspace belongs even before any config exists', async (t) => {
+    const root = await tempDir(t);
+    const paths = {
+      dataDir: join(root, 'data'),
+      outDir: join(root, 'openclaw'),
+    };
+    await mkdir(join(paths.outDir, 'web'), { recursive: true });
+    await writeFile(join(paths.outDir, 'web', 'workspace'), 'not a folder');
+    const state = await gatherState(
+      paths,
+      probe({ readText: systemProbe(URL).readText }),
+    );
+    assert.ok(
+      state.profiles.blockers?.some((p) =>
+        /workspace is a file where a folder belongs/.test(p),
+      ),
+    );
+    const plan = computePlan(state, { ollamaUrl: URL });
+    assert.ok(!plan.actions.some((a) => a.kind === 'render-profiles'));
+  });
+
   it('finds a plain file named after a forbidden skill, and a file where the state folder belongs', async (t) => {
     const { look, paths } = await generated(t);
     const leftover = join(
@@ -975,7 +1048,7 @@ describe('profiles on disk', () => {
     const state = join(paths.outDir, 'knowledge', 'state');
     await writeFile(state, 'not a folder');
     assert.ok(
-      (await look()).problems.some((p) =>
+      (await look()).blockers?.some((p) =>
         /cannot be listed as a folder/.test(p),
       ),
     );

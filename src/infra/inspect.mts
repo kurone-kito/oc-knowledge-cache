@@ -7,6 +7,7 @@ import {
   DEFAULT_PORTS,
   MIN_PORT_SPACING,
   type OpenClawConfig,
+  type OpenClawProfile,
   type ProfileName,
   type ProfileSet,
   posix,
@@ -99,6 +100,10 @@ export const inspectProfiles = async (
   // Something that is not a readable file where a file belongs (a folder, a
   // file in the place of a parent folder) is a problem to report, not a crash.
   const unreadable: string[] = [];
+  // Obstructions that generating the profiles again cannot remove: something
+  // that is not what it should be stands where a generated file belongs. A
+  // person has to clear them; they are not repaired by writing over them.
+  const blockers: string[] = [];
   const listDirectories = async (path: string): Promise<string[]> => {
     try {
       return await listFolders(path);
@@ -128,14 +133,58 @@ export const inspectProfiles = async (
   const sources = await Promise.all(
     NAMES.map((name) => readText(join(paths.outDir, name, 'openclaw.json'))),
   );
+  // The layout (paths, skills) comes from a template built the way a
+  // generation builds it; the configs on disk take the place of the template's.
+  // Ports are not judged here (people set them by hand): the template has
+  // the defaults, and the configs' own ports are only reported for a new
+  // generation to keep, when a generation would accept them.
+  const templateFor = (ports: {
+    readonly web: number;
+    readonly knowledge: number;
+  }): ProfileSet =>
+    buildProfiles({
+      dataDir: paths.dataDir,
+      model: 'template',
+      ollamaUrl: 'http://127.0.0.1:11434',
+      outDir: paths.outDir,
+      ports,
+      repoRoot: paths.outDir,
+      tokens: { knowledge: 'k'.repeat(24), web: 'w'.repeat(24) },
+    });
+  // What stands in the way of the generated files of one profile: a link or a
+  // file of the wrong kind (found by looking at the paths, because reading
+  // follows links) and a state folder that is not a folder. A person clears
+  // these; writing over them is refused.
+  const scanObstructions = async (profile: OpenClawProfile): Promise<void> => {
+    try {
+      blockers.push(...(await linkProblems(profile)));
+    } catch (error) {
+      blockers.push(
+        `the ${profile.name} profile cannot be examined (${(error as NodeJS.ErrnoException).code ?? 'error'}); fix the permissions of ${profile.dir}`,
+      );
+    }
+    // The state folder is made by OpenClaw later; if something that is not a
+    // folder stands there, listing it reports it (a missing one is fine).
+    await listDirectories(profile.stateDir);
+  };
+
   if (sources.every((source) => source === undefined)) {
+    // No config yet, but a profile folder may be a link already: that has to
+    // be said now, or the plan would offer a generation that is then refused.
+    try {
+      const empty = templateFor(DEFAULT_PORTS);
+      for (const profile of [empty.web, empty.knowledge]) {
+        await scanObstructions(profile);
+      }
+    } catch {
+      // Folders that could never hold the profiles are reported by the check
+      // of the layout, before any plan.
+    }
     return {
       agentModel: undefined,
       ollamaUrl: undefined,
-      problems: [
-        'the OpenClaw profiles have not been generated',
-        ...unreadable,
-      ],
+      blockers: [...blockers, ...unreadable],
+      problems: ['the OpenClaw profiles have not been generated'],
       projectRepo: undefined,
     };
   }
@@ -184,24 +233,6 @@ export const inspectProfiles = async (
     }
   }
 
-  // The layout (paths, skills) comes from a template built the way a
-  // generation builds it; the configs on disk take the place of the template's.
-  // Ports are not judged here (people set them by hand): the template has
-  // the defaults, and the configs' own ports are only reported for a new
-  // generation to keep, when a generation would accept them.
-  const templateFor = (ports: {
-    readonly web: number;
-    readonly knowledge: number;
-  }): ProfileSet =>
-    buildProfiles({
-      dataDir: paths.dataDir,
-      model: 'template',
-      ollamaUrl: 'http://127.0.0.1:11434',
-      outDir: paths.outDir,
-      ports,
-      repoRoot: paths.outDir,
-      tokens: { knowledge: 'k'.repeat(24), web: 'w'.repeat(24) },
-    });
   let template: ProfileSet | undefined;
   try {
     template = templateFor(DEFAULT_PORTS);
@@ -213,24 +244,13 @@ export const inspectProfiles = async (
 
   if (template !== undefined) {
     for (const profile of [template.web, template.knowledge]) {
-      // `readText` follows links: a config or skill that is only a link to
-      // something valid-looking must not count as the profile's own.
-      try {
-        problems.push(...(await linkProblems(profile)));
-      } catch (error) {
-        problems.push(
-          `the ${profile.name} profile cannot be examined (${(error as NodeJS.ErrnoException).code ?? 'error'}); fix the permissions of ${profile.dir}`,
-        );
-      }
+      await scanObstructions(profile);
       // A skill of this repository that the profile must not have, left over
       // in its workspace, is cache-specific text in the wrong place.
       const known = new Set([
         ...template.web.skills,
         ...template.knowledge.skills,
       ]);
-      // The state folder is made by OpenClaw later; if something that is not
-      // a folder stands there, listing it reports it (a missing one is fine).
-      await listDirectories(profile.stateDir);
       for (const name of await listDirectories(
         join(profile.workspace, 'skills'),
       )) {
@@ -433,7 +453,8 @@ export const inspectProfiles = async (
     agentModel,
     ollamaUrl: ollamaUrl === undefined ? undefined : trimUrl(ollamaUrl),
     // Unreadable paths are collected as the files are read, until the end.
-    problems: [...problems, ...unreadable],
+    blockers: [...blockers, ...unreadable],
+    problems,
     projectRepo,
     ...(keptPorts === undefined ? {} : { ports: keptPorts }),
   };

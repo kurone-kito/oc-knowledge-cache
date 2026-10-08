@@ -108,6 +108,22 @@ const linkProblem = async (path: string): Promise<string | undefined> => {
   return undefined;
 };
 
+/**
+ * A plain file where a folder of the profile belongs: writing would fail on
+ * it (and with a raw error that does not say what to remove).
+ */
+const folderProblem = async (path: string): Promise<string | undefined> => {
+  const info = await lstat(path).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') {
+      return undefined;
+    }
+    throw error;
+  });
+  return info?.isFile()
+    ? `${path} is a file where a folder belongs; refusing to write generated files there. Remove or move it.`
+    : undefined;
+};
+
 const refuseLink = async (path: string): Promise<void> => {
   const problem = await linkProblem(path);
   if (problem !== undefined) {
@@ -137,6 +153,19 @@ export const linkProblems = async (
     profile.configPath,
   ]) {
     const problem = await linkProblem(path);
+    if (problem !== undefined) {
+      problems.push(problem);
+    }
+  }
+  // The state folder is left out: OpenClaw makes it later, and the inspection
+  // reports a non-folder there when it lists it.
+  for (const path of [
+    profile.dir,
+    profile.workspace,
+    skills,
+    ...profile.skills.map((name) => join(skills, name)),
+  ]) {
+    const problem = await folderProblem(path);
     if (problem !== undefined) {
       problems.push(problem);
     }

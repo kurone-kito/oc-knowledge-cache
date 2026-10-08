@@ -411,12 +411,37 @@ describe('a link or a file in the place of the backup or a folder', () => {
     assert.equal((await stat(target)).mode & 0o777, 0o644);
   });
 
-  it('does not stumble over a plain file where a folder belongs', async (t) => {
+  it('names a plain file where a folder belongs, without stumbling over what is below it', async (t) => {
     const { dataDir, set } = await generate(t);
     await writeProfiles(set, { dataDir, repoRoot });
-    await rm(join(set.web.workspace, 'skills'), { recursive: true });
-    await writeFile(join(set.web.workspace, 'skills'), 'not a folder');
-    assert.deepEqual(await linkProblems(set.web), []);
+    const skills = join(set.web.workspace, 'skills');
+    await rm(skills, { recursive: true });
+    await writeFile(skills, 'not a folder');
+    // Only the file itself: what would lie below it (ENOTDIR) is not a
+    // second problem.
+    assert.deepEqual(
+      (await linkProblems(set.web)).map((p) =>
+        p.startsWith(`${skills} is a file where a folder belongs`),
+      ),
+      [true],
+    );
+    await assert.rejects(
+      writeProfiles(set, { dataDir, repoRoot }),
+      /is a file where a folder belongs/,
+    );
+  });
+
+  it('names a plain file in the place of the workspace', async (t) => {
+    const { dataDir, set } = await generate(t);
+    await writeProfiles(set, { dataDir, repoRoot });
+    await rm(set.web.workspace, { recursive: true });
+    await writeFile(set.web.workspace, 'not a folder');
+    assert.deepEqual(
+      (await linkProblems(set.web)).map((p) =>
+        p.startsWith(`${set.web.workspace} is a file where a folder belongs`),
+      ),
+      [true],
+    );
   });
 });
 

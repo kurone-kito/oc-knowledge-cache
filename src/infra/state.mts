@@ -94,8 +94,16 @@ export const gatherState = async (
   const [hardware, models, openclaw, profiles] = await Promise.all([
     probe.detectHardware(),
     probe.listModels().then(
-      (installedModels) => ({ installedModels, reachable: true }),
-      () => ({ installedModels: [] as ModelInfo[], reachable: false }),
+      (installedModels) => ({
+        error: undefined as string | undefined,
+        installedModels,
+        reachable: true,
+      }),
+      (error: unknown) => ({
+        error: error instanceof Error ? error.message : String(error),
+        installedModels: [] as ModelInfo[],
+        reachable: false,
+      }),
     ),
     probe.openclawVersion().then(
       (version) => (version === '' ? undefined : version),
@@ -113,6 +121,7 @@ export const gatherState = async (
     hardware,
     installedModels: models.installedModels,
     ollamaReachable: models.reachable,
+    ...(models.error === undefined ? {} : { ollamaError: models.error }),
     openclawVersion: openclaw,
     profiles,
     storeModel,
