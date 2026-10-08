@@ -287,3 +287,7 @@ CLAUDE.local.md
 ### Node ###
 # pnpm
 pnpm-lock.yaml.*
+
+### Project ###
+# Local knowledge cache (manifest, vector store, rendered configs)
+.data/
