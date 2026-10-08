@@ -4,22 +4,14 @@ Experiment on non-volatile caching of knowledge using OpenClaw
 
 ## System Requirements
 
-- Node.js: Any of the following versions
-  - Jod LTS (`^22.23.3`)
-  - Krypton LTS (`^24.2.0`)
-  - Latest (`>=26.0.0`)
-
-Note that this template includes `.node-version`, `.nvmrc`, and
-`.tool-versions` files with specific Node.js versions. These files
-currently list `22.23.3`, so update them and this section as needed when
-you start a new project.
+- Node.js: Latest (`>=26.0.0`)
 
 ## Development
 
 ### Install the dependencies
 
 ```sh
-corepack enable
+mise install
 pnpm install
 ```
 
