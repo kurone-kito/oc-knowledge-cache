@@ -127,7 +127,12 @@ export const isInside = (
   return c === p || c.startsWith(p.endsWith('/') ? p : `${p}/`);
 };
 
-const absolute = (path: string): string => posix(resolve(path));
+/** An absolute path with forward slashes, the way the configs spell it. */
+export const absolute = (path: string): string => posix(resolve(path));
+
+/** Whether two paths are the same place (case-blind on Windows). */
+export const samePath = (a: string, b: string): boolean =>
+  isInside(a, b) && isInside(b, a);
 
 const shared = (
   input: ProfileInput,
