@@ -7,6 +7,12 @@ import:
   - '@kurone-kito/cspell-config'
 version: '0.2'
 words:
+  - kmbt
+  - minilm
+  - noheader
+  - nomic
   - Ollama
   - OpenClaw
+  - ornith
   - Qdrant
+  - smollm

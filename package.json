@@ -26,6 +26,7 @@
     "lint:fix": "pnpm run --stream \"/(lint:fix:.+|lint:check:cspell)/\"",
     "lint:fix:biome": "biome check --write",
     "lint:fix:markdown": "markdownlint-cli2 --fix \"**/*.md\"",
+    "models:recommend": "node src/cli/models-recommend.mts",
     "prepare": "husky",
     "test": "pnpm run lint && pnpm run test:unit",
     "test:unit": "node --test \"src/**/*.test.mts\""
