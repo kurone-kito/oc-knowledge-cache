@@ -263,8 +263,9 @@ pnpm run lint:fix # Lint and auto-fix
 pnpm run test
 ```
 
-Currently, the command works as an alias for the `pnpm run lint` command.
-Set up your own testing framework and replace this script as needed.
+The command runs `pnpm run lint` (which includes the `tsc` typecheck) and
+then `pnpm run test:unit`, the built-in `node --test` runner over
+`src/**/*.test.mts`.
 
 ### Cleaning
 
@@ -274,18 +275,21 @@ pnpm run clean
 
 ## Testing strategy
 
-Currently, `pnpm run test` is an alias for `pnpm run lint`. When
-setting up a derived project, replace this with a real test runner
-(e.g., Vitest, Jest) and define:
+`pnpm run test` runs the linters (including the `tsc` typecheck) and
+then the unit tests:
 
-- **Test location**: co-locate test files next to source or in a
-  dedicated `__tests__/` directory
+- **Runner**: the built-in `node --test` on TypeScript files (Node.js 26
+  strips types natively); no extra test dependency
+- **Test location**: co-locate `*.test.mts` files next to the source in
+  `src/<module>/`; `src/cli/*.mts` are the `pnpm run` entry points
+- **Isolation**: tests must not need a network, a GPU, Ollama or a NAS;
+  inject the HTTP client, command runner and file system roots instead
 - **Coverage targets**: aim for meaningful coverage; avoid
   coverage-only metrics
 - **Test naming**: use descriptive names that explain the expected
   behavior (e.g., `it('returns 404 when user not found')`)
-- **CI integration**: ensure tests run in the CI pipeline
-  (`.github/workflows/`)
+- **CI integration**: `.github/workflows/push.yml` already runs
+  `pnpm run test` on Ubuntu and Windows
 
 ## Monorepo guidance
 
