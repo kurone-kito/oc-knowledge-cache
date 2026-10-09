@@ -57,7 +57,7 @@ describe('OpenClaw skills', async () => {
   it('list as cache skills exactly those that carry the settings of the cache', async () => {
     for (const skill of skills) {
       assert.equal(
-        (await read(skill)).includes('{{KC_'),
+        /\{\{KC_(REPO|DATA|OLLAMA)\}\}/.test(await read(skill)),
         CACHE_SKILLS.includes(skill),
         `${skill}: placeholders of the cache and CACHE_SKILLS agree`,
       );
@@ -85,8 +85,92 @@ describe('OpenClaw skills', async () => {
   it('request-triage keeps the request in the session and builds and publishes nothing', async () => {
     const text = await read('request-triage');
     assert.match(text, /Never send the request/);
-    assert.match(text, /Do not write or publish an issue yourself/);
+    assert.match(text, /Do not publish an issue/);
     assert.doesNotMatch(text, /`(gh|curl|git push)\b/);
+  });
+
+  it('request-triage lists the issue-draft skill among what exists and leaves the publishing to a person', async () => {
+    const text = (await read('request-triage')).replace(/\s+/g, ' ');
+    const exists = text.slice(
+      text.indexOf('## What exists now'),
+      text.indexOf('## The estimate'),
+    );
+    assert.match(exists, /`issue-draft`/);
+    assert.match(exists, /publishes nothing/);
+    // The estimate no longer says that a person writes the issue.
+    assert.doesNotMatch(text, /that a person writes and publishes/);
+    assert.match(text, /a person reviews it and publishes it/);
+  });
+
+  it('issue-draft writes a local draft for a person to read and publishes nothing', async () => {
+    // Lines are wrapped: compare with the whitespace collapsed.
+    const text = (await read('issue-draft')).replace(/\s+/g, ' ');
+    assert.match(text, /You do \*\*not\*\* publish it/);
+    assert.match(text, /until a person has read it/);
+    assert.match(
+      text,
+      /DRAFT - not reviewed - do not publish before a person has read it/,
+    );
+    // The destination is a full path in the workspace, filled in when the
+    // profile is generated: the working directory can be the project repository.
+    assert.match(text, /"drafts": "\{\{KC_WORKSPACE\}\}\/drafts"/);
+    assert.match(text, /never into the project repository or the cache/);
+    assert.match(text, /never a relative path/);
+    // The commands that send text out are named only to forbid them.
+    const never = text.slice(
+      text.indexOf('## Never'),
+      text.indexOf('## Steps'),
+    );
+    assert.match(never, /`gh`/);
+    // Not only publishing: no network request of any kind.
+    assert.match(never, /network request of any kind/);
+    assert.doesNotMatch(
+      text.replace(never, ''),
+      /`(gh|curl|git push|sendmail|mail)\b/,
+    );
+  });
+
+  it('issue-draft asks for the generic capability first and a private note of what was left out', async () => {
+    const text = await read('issue-draft');
+    assert.match(text, /Generalize first/);
+    assert.match(text, /\.private\.md/);
+    // The person is told that the scrubbing can fail (it did, in the runs).
+    assert.match(
+      text.replace(/\s+/g, ' '),
+      /read against their original request/,
+    );
+    for (const section of [
+      '## Goal',
+      '## Scope',
+      '## Acceptance criteria',
+      '## Test strategy',
+      '## Estimate',
+      '## Abstraction check',
+    ]) {
+      assert.ok(text.includes(section), `the template has ${section}`);
+    }
+  });
+
+  it('issue-draft has an optional Part of line that takes a public issue only, and one rule on language', async () => {
+    const text = (await read('issue-draft')).replace(/\s+/g, ' ');
+    assert.match(text, /Part of <a public issue of this project/);
+    assert.match(text, /takes only a public issue of this project/);
+    // The ban on figures leaves room for that one number.
+    const never = text.slice(
+      text.indexOf('## Never'),
+      text.indexOf('## Steps'),
+    );
+    assert.match(never, /no real figures/);
+    assert.match(never, /public issue of the `Part of` line/);
+    assert.doesNotMatch(never, /no real numbers/);
+    // One rule on the language, with the same exception in the template and in
+    // the boundaries.
+    assert.match(
+      text,
+      /in English unless the person asks for another language/,
+    );
+    assert.match(text, /in English unless they ask for another language/);
+    assert.doesNotMatch(text, /the draft itself is in English\./);
   });
 
   for (const skill of skills) {

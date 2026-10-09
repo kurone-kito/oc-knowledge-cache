@@ -24,6 +24,8 @@ It picks the best installed agent model with `models:recommend` (override with
     workspace/AGENTS.md      operating instructions of the knowledge agent
     workspace/skills/knowledge-search/SKILL.md
     workspace/skills/request-triage/SKILL.md
+    workspace/skills/issue-draft/SKILL.md
+    workspace/drafts/        written by issue-draft when it is used
 ```
 
 The `AGENTS.md` of each workspace is written from
@@ -77,7 +79,8 @@ pnpm run ingest --source <NAS share>
 1. Add the folder `openclaw/skills/<name>/SKILL.md`. The frontmatter `name` is
    the folder name, and the `description` says when to use the skill. The
    placeholders such as `{{KC_REPO}}` are filled in when the profiles are
-   generated.
+   generated (`{{KC_WORKSPACE}}` is the profile's own workspace, for a skill
+   that writes there; the others carry the settings of the cache).
 2. Declare it for the profile that carries it, in `PROFILE_SKILLS` in
    `src/openclaw/profiles.mts`.
 3. If it reads or mentions the cache or internal work, it is private: list it
@@ -120,6 +123,7 @@ If a model still ignores the search skill, start the message with
 | Write files, run shell   | no                  | yes (coding profile)        |
 | Skill                    | `web-research`      | `knowledge-search`          |
 | Another skill            | none                | `request-triage`            |
+| A third skill            | none                | `issue-draft`               |
 | Knowledge cache          | no                  | through `kc:search`         |
 | `gateway`, `cron`        | denied              | denied                      |
 | Spawn or message agents  | denied              | denied                      |
@@ -137,12 +141,57 @@ new capability is needed), the reasons, what is reused, the new inputs and
 outputs, the permissions, how it would be tested, a size from S to L, and the
 next step. It lists what the instance can do today (refresh that list when a
 skill is added), never sends the request anywhere, and does not write or
-publish an issue: a person does. The generated `AGENTS.md` sends such requests
+publish an issue itself: that is the next skill, and a person publishes. The
+generated `AGENTS.md` sends such requests
 to it, but a small local model does not always follow that: start the request
 with `$request-triage` to make the agent read the skill first. On one small
 model and the nine samples of "Evaluating a skill" below, the six requests that
 need triage were answered in its form 3 and 2 times of 6 in two runs without
 the reference, and 5 times of 6 with it.
+
+## From a missing capability to an issue
+
+When the triage says that a new capability is needed, the `issue-draft` skill
+writes the text of an implementation issue that someone elsewhere, who has
+never seen this project, could build from. The flow has three steps, and only
+the first is done by the instance:
+
+1. **The instance drafts.** It writes `<name>.md` and, next to it,
+   `<name>.private.md` into the `drafts/` folder of the knowledge workspace
+   (`.openclaw/knowledge/workspace/drafts/`). The skill carries the full path
+   of that folder, filled in when the profiles are generated (like
+   `{{KC_REPO}}`), because the agent's working directory is the project
+   repository when one is configured and a relative path would land there. The
+   folder is not in the data directory or the project repository, and it is
+   left alone when the profiles are generated again. The draft starts with
+   `DRAFT - not reviewed - do not publish before a person has read it`,
+   follows the layout of this repository's issues (an optional `Part of` line
+   for a public issue that the person named, goal, scope, acceptance criteria,
+   test strategy, estimate) and ends with an abstraction check. The note lists
+   what was left out; it stays on the machine.
+2. **A person reviews.** They read the draft against their original request,
+   with the note beside it, and remove whatever should not leave.
+3. **A person publishes.** The skill has no instruction to publish and names
+   `gh`, `curl` and the mail commands only to forbid them. That is guidance,
+   like the rest of `AGENTS.md`: the instance has a shell, so the gate is the
+   person, not the skill (rule 1 of the information-flow rules in
+   [architecture](architecture.md)).
+
+Do not rely on the instance to scrub the draft. It was tried with the mail
+review request of #34 and invented names (a company, a person, a mailbox, a
+file server, a ledger file and a design document), on the same small model, in
+four rounds of the skill's wording and 14 runs that count (one more shared a
+session with an aborted run and was dropped). The header, the six sections and
+the note were there every time, every draft was written under the workspace,
+and no run called a web tool or a command that sends text out. But only 5 of
+the 14 drafts were free of the details: a person's name, often inside an
+example address (`alice.tanaka@...`), was left in 6, a file or document name
+taken from the request (a ledger file, the title of the design document) in 9,
+and the mailbox name in 1. The last round, the wording that this repository
+ships, had 3 of 4 drafts free of them and no person's name; rounds 2 to 4 have
+the same rules for scrubbing, and 2 of 7 and then 3 of 4 is too few runs to say
+whether anything changed. This is why the draft is marked as not reviewed, and
+why the person is told to read it against the request.
 
 ## Evaluating a skill
 
@@ -218,12 +267,13 @@ existing cache keeps its embedding model. `apply` pulls the missing models and
 generates the profiles. Starting Ollama and installing OpenClaw are printed as
 MANUAL steps and never done for you.
 
-The profiles count as up to date only when both configs, both skills and both
-`AGENTS.md` files exist (the files equal to the repository's),
+The profiles count as up to date only when both configs, every skill declared
+for a profile and both `AGENTS.md` files exist (the files equal to the
+repository's),
 the isolation properties still hold (including each agent's own workspace and
-the project directory), the knowledge skill points at this run's `--data` and
-this repository, and they name the chosen agent model, the `--ollama-url` and
-the `--project-repo` of this run. Pass the same `--out`,
+the project directory), the `knowledge-search` skill points at this run's
+`--data` and this repository, and they name the chosen agent model, the
+`--ollama-url` and the `--project-repo` of this run. Pass the same `--out`,
 `--data`, `--project-repo` and `--ollama-url` every time: profiles that differ
 are generated again (leaving `--project-repo` out means "no project
 repository"), while settings you added by hand are not judged. The gateway

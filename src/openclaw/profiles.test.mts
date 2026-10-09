@@ -146,6 +146,7 @@ describe('buildProfiles', () => {
     assert.deepEqual(at(agent, 'skills'), [
       'knowledge-search',
       'request-triage',
+      'issue-draft',
     ]);
     assert.equal(at(agent, 'tools', 'profile'), 'coding');
     for (const denied of [
@@ -157,7 +158,11 @@ describe('buildProfiles', () => {
       assert.ok(strings(at(agent, 'tools', 'deny')).includes(denied), denied);
     }
     assert.equal(at(agent, 'cwd'), abs('/work/project'));
-    assert.deepEqual(knowledge.skills, ['knowledge-search', 'request-triage']);
+    assert.deepEqual(knowledge.skills, [
+      'knowledge-search',
+      'request-triage',
+      'issue-draft',
+    ]);
   });
 
   it('works in its own workspace when no project repository is given', () => {
@@ -519,12 +524,13 @@ describe('declared skills', () => {
     );
   });
 
-  it('keeps the default declaration: the web profile has one skill, knowledge the two private ones', () => {
+  it('keeps the default declaration: the web profile has one skill, knowledge the three private ones', () => {
     const set = buildProfiles(input());
     assert.deepEqual(set.web.skills, ['web-research']);
     assert.deepEqual(set.knowledge.skills, [
       'knowledge-search',
       'request-triage',
+      'issue-draft',
     ]);
     assert.equal(set.privateSkills, undefined);
   });

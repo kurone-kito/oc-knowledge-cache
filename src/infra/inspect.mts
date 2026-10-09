@@ -326,6 +326,7 @@ export const inspectProfiles = async (
               source,
               { dataDir: paths.dataDir, repoRoot: requested.repoRoot },
               url,
+              profile.workspace,
             );
             if (content !== expected) {
               problems.push(

@@ -484,7 +484,54 @@ describe('renderSkillFile', () => {
   });
 });
 
+describe('renderSkillFile and the workspace', () => {
+  it('fills {{KC_WORKSPACE}} with the workspace as a JSON-safe path and leaves it without one', () => {
+    const options = { dataDir: '/d', repoRoot: '/r' };
+    const text = '{ "drafts": "{{KC_WORKSPACE}}/drafts" }';
+    assert.deepEqual(
+      JSON.parse(
+        renderSkillFile(text, options, 'http://h:1', '/srv/work/knowledge'),
+      ),
+      { drafts: '/srv/work/knowledge/drafts' },
+    );
+    // A workspace path with a quote or a line break stays one JSON string.
+    assert.deepEqual(
+      JSON.parse(
+        renderSkillFile(text, options, 'http://h:1', '/srv/"x"\n$&/ws'),
+      ),
+      { drafts: '/srv/"x"\n$&/ws/drafts' },
+    );
+    assert.equal(renderSkillFile(text, options, 'http://h:1'), text);
+  });
+});
+
 describe('skill placeholders', () => {
+  it('writes the workspace of its own profile into the issue-draft skill', async (t) => {
+    const root = await tempDir(t);
+    const dataDir = join(root, 'data');
+    const set = buildProfiles({
+      dataDir,
+      model: 'm',
+      ollamaUrl: 'http://127.0.0.1:11434',
+      outDir: join(root, 'openclaw'),
+      repoRoot,
+      tokens: { knowledge: 'k'.repeat(24), web: 'w'.repeat(24) },
+    });
+    await writeProfiles(set, { dataDir, repoRoot });
+    const text = await readFile(
+      skillFile(set, 'knowledge', 'issue-draft'),
+      'utf8',
+    );
+    assert.ok(!text.includes('{{KC_'), 'no placeholder is left');
+    const start = text.indexOf('```json\n') + '```json\n'.length;
+    const parsed = JSON.parse(text.slice(start, text.indexOf('```', start)));
+    assert.equal(
+      parsed.drafts,
+      `${set.knowledge.workspace.replaceAll('\\', '/')}/drafts`,
+      'the folder lies in the workspace of the knowledge profile',
+    );
+  });
+
   it('writes paths with replacement patterns and quotes literally', async (t) => {
     const root = await tempDir(t);
     const dataDir = join(root, 'data $& and $$');

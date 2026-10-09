@@ -21,7 +21,7 @@ export type ProfileName = 'web' | 'knowledge';
  */
 export const PROFILE_SKILLS: Readonly<Record<ProfileName, readonly string[]>> =
   {
-    knowledge: ['knowledge-search', 'request-triage'],
+    knowledge: ['knowledge-search', 'request-triage', 'issue-draft'],
     web: ['web-research'],
   };
 
@@ -33,6 +33,7 @@ export const PROFILE_SKILLS: Readonly<Record<ProfileName, readonly string[]>> =
 export const PRIVATE_SKILLS: readonly string[] = [
   'knowledge-search',
   'request-triage',
+  'issue-draft',
 ];
 
 /**
