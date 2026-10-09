@@ -3,7 +3,7 @@ import { parseArgs } from 'node:util';
 import { scanChanges } from '../nas/changes.mts';
 import { loadManifest } from '../nas/manifest.mts';
 import { DEFAULT_EXTENSIONS } from '../nas/scan.mts';
-import { scriptArgs } from './options.mts';
+import { resolveDataDir, scriptArgs } from './options.mts';
 
 const USAGE = `Usage: pnpm run nas:scan --source <dir> [options]
 
@@ -15,7 +15,8 @@ everything is reported as added).
 
 Options:
   --source <dir>   directory to scan, e.g. a mounted NAS share (required)
-  --data <dir>     data directory holding manifest.json (default .data)
+  --data <dir>     data directory holding manifest.json
+                   (default $KC_DATA_DIR, else .data)
   --ext <list>     comma-separated extensions (default ${DEFAULT_EXTENSIONS.join(',')})
   --exclude <glob> skip paths matching the glob; repeatable
   --allow-empty    accept an empty scan even though files were known before
@@ -58,7 +59,7 @@ const main = async (): Promise<number> => {
     return 1;
   }
 
-  const manifestFile = join(values.data ?? '.data', 'manifest.json');
+  const manifestFile = join(resolveDataDir(values.data), 'manifest.json');
   const previous = await loadManifest(manifestFile);
   const extensions = values.ext
     ?.split(',')

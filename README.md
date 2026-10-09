@@ -103,12 +103,10 @@ Run it again whenever the documents change: files that did not change cost
 nothing, and files that disappeared from the folder are removed from the
 cache. The cache lives in
 `.data/` (`--data` or `KC_DATA_DIR` changes that; use the same folder for
-`ingest`, `kc:search` and `provision`, because the generated profiles point
-the agent at the one they were generated with; likewise pass the same
+every command, because the generated profiles point the agent at the one
+they were generated with; likewise pass the same
 `--ollama-url`, or set `OLLAMA_HOST`, when Ollama is not the local one).
-`openclaw:generate` and `nas:scan` do not read `KC_DATA_DIR`: give them
-`--data` themselves. To see how one workbook is read, run
-`pnpm run excel:convert <file.xlsx>`.
+To see how one workbook is read, run `pnpm run excel:convert <file.xlsx>`.
 
 ### 4. Search the cache yourself
 
