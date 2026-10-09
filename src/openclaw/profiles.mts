@@ -21,7 +21,7 @@ export type ProfileName = 'web' | 'knowledge';
  */
 export const PROFILE_SKILLS: Readonly<Record<ProfileName, readonly string[]>> =
   {
-    knowledge: ['knowledge-search'],
+    knowledge: ['knowledge-search', 'request-triage'],
     web: ['web-research'],
   };
 
@@ -30,7 +30,18 @@ export const PROFILE_SKILLS: Readonly<Record<ProfileName, readonly string[]>> =
  * knowledge profile may carry one: the web instance must not be told about
  * what it cannot reach.
  */
-export const PRIVATE_SKILLS: readonly string[] = ['knowledge-search'];
+export const PRIVATE_SKILLS: readonly string[] = [
+  'knowledge-search',
+  'request-triage',
+];
+
+/**
+ * The skills whose text carries the settings of the cache (`{{KC_DATA}}`,
+ * `{{KC_REPO}}`, `{{KC_OLLAMA}}`): the inspection checks that the installed
+ * text holds the data directory, this repository and the Ollama server of the
+ * profile.
+ */
+export const CACHE_SKILLS: readonly string[] = ['knowledge-search'];
 
 export interface ProfileInput {
   /** Directory that receives one sub-directory per profile. */

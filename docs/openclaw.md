@@ -23,6 +23,7 @@ It picks the best installed agent model with `models:recommend` (override with
     openclaw.json            config for the knowledge instance
     workspace/AGENTS.md      operating instructions of the knowledge agent
     workspace/skills/knowledge-search/SKILL.md
+    workspace/skills/request-triage/SKILL.md
 ```
 
 The `AGENTS.md` of each workspace is written from
@@ -118,6 +119,7 @@ If a model still ignores the search skill, start the message with
 | Read files               | its workspace only  | yes (project repository)    |
 | Write files, run shell   | no                  | yes (coding profile)        |
 | Skill                    | `web-research`      | `knowledge-search`          |
+| Another skill            | none                | `request-triage`            |
 | Knowledge cache          | no                  | through `kc:search`         |
 | `gateway`, `cron`        | denied              | denied                      |
 | Spawn or message agents  | denied              | denied                      |
@@ -127,6 +129,39 @@ the repository as the working directory and the question in an environment
 variable (`--question-env`), so that quotes or `$(...)` in a question never
 reach a shell. It also tells the agent to cite `path (Sheet!range)` for every
 fact, and to say so when the cache has nothing relevant.
+
+The `request-triage` skill decides what a request for new or changed work
+needs before anything is built, and answers in a fixed form: one of three
+outcomes (do it now, compose a skill or workflow from the existing tools, or a
+new capability is needed), the reasons, what is reused, the new inputs and
+outputs, the permissions, how it would be tested, a size from S to L, and the
+next step. It lists what the instance can do today (refresh that list when a
+skill is added), never sends the request anywhere, and does not write or
+publish an issue: a person does. The generated `AGENTS.md` sends such requests
+to it, but a small local model does not always follow that: start the request
+with `$request-triage` to make the agent read the skill first. On one small
+model and the nine samples of "Evaluating a skill" below, the six requests that
+need triage were answered in its form 3 and 2 times of 6 in two runs without
+the reference, and 5 times of 6 with it.
+
+## Evaluating a skill
+
+A skill that a model has to pick on its own is measured, not assumed.
+`src/openclaw/triage-samples.mts` holds sample requests for `request-triage`
+with the outcome each should get (three per outcome, English and Japanese,
+including the mail review of #34). With the gateway of the `knowledge` profile
+running and its two variables set, ask each in a fresh session (a session id
+of its own for every request, and a new one for every rerun, or the requests
+inherit each other's conversation) and read the `Outcome:` line of the answer:
+
+```sh
+openclaw agent --agent knowledge --session-id "triage-<sample id>-<run>" \
+  --timeout 600 --json --message "<the request>"
+```
+
+`outcomeOf` in the same file reads that line. Keep the counts in the pull
+request that changes a skill or the generated instructions, with the model, and
+say that the sample is small: it shows that a skill is chosen, not how often.
 
 ## Limits
 

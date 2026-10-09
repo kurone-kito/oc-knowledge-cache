@@ -3,6 +3,7 @@ import { realPathOf } from '../openclaw/paths.mts';
 import {
   absolute,
   buildProfiles,
+  CACHE_SKILLS,
   checkProfiles,
   DEFAULT_PORTS,
   MIN_PORT_SPACING,
@@ -267,7 +268,10 @@ export const inspectProfiles = async (
         const content = await readText(file);
         if (content === undefined) {
           problems.push(`the ${profile.name} profile lacks the ${skill} skill`);
-        } else if (profile.name === 'knowledge') {
+        } else if (
+          profile.name === 'knowledge' &&
+          CACHE_SKILLS.includes(skill)
+        ) {
           // The skill carries the paths of the cache and of this repository,
           // in the exact places where the generator writes them (see the
           // skill's source): a longer path that merely starts with the right

@@ -27,6 +27,12 @@ or anywhere else on the file system, and this instance has no web access.
    question, and keep what the cache returns on this machine.
 5. For coding tasks, consult the design documents through the skill before
    you decide what to build, then work in the project repository as usual.
+6. Before you build or change anything beyond a plain edit of the project
+   repository (a new skill or workflow, an integration with another system, a
+   change to this system), read `skills/request-triage/SKILL.md` and follow
+   it. It decides what the request needs, and it keeps the request in this
+   session. A request to create a skill, a routine or an integration is
+   exactly its job: do not start building until it has answered.
 
 The project repository may have its own `AGENTS.md`: follow it for build,
 test and style rules.

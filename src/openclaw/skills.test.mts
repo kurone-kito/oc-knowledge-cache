@@ -3,7 +3,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { PRIVATE_SKILLS, PROFILE_SKILLS } from './profiles.mts';
+import { CACHE_SKILLS, PRIVATE_SKILLS, PROFILE_SKILLS } from './profiles.mts';
 
 const skillsRoot = fileURLToPath(
   new URL('../../openclaw/skills', import.meta.url),
@@ -52,6 +52,41 @@ describe('OpenClaw skills', async () => {
         `${skill} is not declared for web`,
       );
     }
+  });
+
+  it('list as cache skills exactly those that carry the settings of the cache', async () => {
+    for (const skill of skills) {
+      assert.equal(
+        (await read(skill)).includes('{{KC_'),
+        CACHE_SKILLS.includes(skill),
+        `${skill}: placeholders of the cache and CACHE_SKILLS agree`,
+      );
+    }
+  });
+
+  it('request-triage names the three outcomes, the four factors and the answer form', async () => {
+    const text = await read('request-triage');
+    for (const needle of [
+      'Do it now',
+      'Compose',
+      'New capability',
+      'Reuse',
+      'New input or output',
+      'Permissions',
+      'Testing',
+      'Outcome:',
+      'Estimate:',
+      'Next step:',
+    ]) {
+      assert.ok(text.includes(needle), `mentions ${needle}`);
+    }
+  });
+
+  it('request-triage keeps the request in the session and builds and publishes nothing', async () => {
+    const text = await read('request-triage');
+    assert.match(text, /Never send the request/);
+    assert.match(text, /Do not write or publish an issue yourself/);
+    assert.doesNotMatch(text, /`(gh|curl|git push)\b/);
   });
 
   for (const skill of skills) {
