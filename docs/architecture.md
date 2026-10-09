@@ -40,12 +40,17 @@ repository. The scripts are also the entry points that OpenClaw calls.
 | Chunking and embeddings           | #8    | used by `ingest`             |
 | SQLite vector store, search       | #9    | `pnpm run kc:search`         |
 | Sync the NAS into the cache       | #10   | `pnpm run ingest`            |
-| Two OpenClaw profiles             | #11   | `pnpm run openclaw:generate` |
+| Web + [private hub][hub] profiles | #11   | `pnpm run openclaw:generate` |
 | OpenClaw skills                   | #12   | generated into profiles      |
 | Idempotent provisioning           | #13   | `pnpm run provision`         |
 | Relay and egress guard            | #14   | deferred                     |
 | Vector index, hybrid search, MCP  | #15   | deferred                     |
 | Excel shapes, grid paper, `.xls`  | #16   | deferred                     |
+
+The two profiles are `web` and `knowledge`, which is the private hub; see
+[where a new capability goes][hub].
+
+[hub]: #where-a-new-capability-goes
 
 Source lives in `src/<module>/` with co-located `*.test.mts` files;
 `src/cli/` holds the script entry points.
@@ -89,6 +94,39 @@ all.
 | Embeddings              | Ollama `/api/embed`     | thin client                     | none planned                        |
 | Non-volatile store      | `node:sqlite`           | brute-force cosine search       | sqlite-vec, LanceDB, Qdrant (#15)   |
 | Tests                   | `node --test`, `tsc`    | none                            | none planned                        |
+
+## Where a new capability goes
+
+A new business or routine does not get an OpenClaw instance of its own.
+Instances split along **trust boundaries**, not businesses: `web` is the
+public side, and `knowledge` is the private hub that holds the cache, the
+project repository and, later, the other internal sources. A new capability
+is added to the hub as a skill, a workflow or a tool, and only a different
+trust level justifies something bigger:
+
+| What is needed | Where it goes | Choose it when |
+| --- | --- | --- |
+| A new business or routine | a skill, workflow or tool of the private hub | it needs the same data and the same privileges, and its input is as trusted as the operator's |
+| An independent session or a distinct expertise | another agent in the same gateway | it needs its own history, tool list or model, and nothing about trust changes |
+| A different privilege or confidentiality | another gateway **whose isolation is enforced**: another OS user, container or host, with its own file permissions and network routes | it must not see what the hub sees, or it reads untrusted input (mail, web) that the hub must not |
+
+Two cautions go with the table:
+
+- Profile settings and tool allowlists are not isolation, and neither is a
+  second gateway on the same OS user and the same network: the instances then
+  share the host, and the tool policy is not a file or network sandbox. Only
+  OS permissions and network routes are a boundary; a capability that needs a
+  different privilege or confidentiality waits until that isolation exists.
+  The limits in [OpenClaw instances](openclaw.md#limits) say what the
+  generated profiles do and do not hold.
+- A business that reads untrusted input **and** private data **and** can cause
+  a side effect (mail in, a ledger entry, mail out) is checked against the
+  information-flow rules above before it is added. Rules 1 to 3 decide whether
+  it can live in the hub at all.
+
+The name `knowledge` stays for now. Calling it the private hub is a way of
+speaking; renaming it would change paths, ports, CLI options, documents and
+tests, and is a separate breaking change.
 
 ## Model selection
 
