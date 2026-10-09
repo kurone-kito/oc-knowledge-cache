@@ -6,6 +6,7 @@ import {
   describeAction,
   describePlan,
   type MachineState,
+  modelsUnknownNote,
   type Plan,
   sameModel,
   unfitReason,
@@ -102,12 +103,8 @@ const report = (plan: Plan, state: MachineState): number => {
     ]);
     return 0;
   }
-  print([
-    ...describePlan(plan),
-    ...(state.ollamaReachable || plan.agentModel === undefined
-      ? []
-      : ['(models are unknown while Ollama is not running)']),
-  ]);
+  const note = modelsUnknownNote(state, plan);
+  print([...describePlan(plan), ...(note === undefined ? [] : [note])]);
   return 0;
 };
 

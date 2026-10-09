@@ -402,6 +402,22 @@ export const checkProfiles = (
         `the ${entry.name} agent has a workspace that is not its own`,
       );
     }
+    // Where a workspace is matters as much as that two spellings agree: it
+    // must lie in the profile's own directory (the web instance may read
+    // nothing else).
+    for (const workspace of new Set(
+      [
+        entry.workspace,
+        get(entry.config, 'agents', 'defaults', 'workspace'),
+        get(entry.config, 'agents', 'entries', entry.agentId, 'workspace'),
+      ].filter((path): path is string => typeof path === 'string'),
+    )) {
+      if (!isInside(absolute(workspace), entry.dir)) {
+        problems.push(
+          `the ${entry.name} workspace ${workspace} is outside its profile directory`,
+        );
+      }
+    }
   }
   if (web.config && knowledge.config) {
     const tokenWeb = get(web.config, 'gateway', 'auth', 'token');
@@ -442,6 +458,16 @@ export const checkProfiles = (
     }
     if (isInside(dataDir, web.dir)) {
       problems.push('the data directory is inside the web profile directory');
+    }
+    for (const entry of [web, knowledge]) {
+      if (
+        isInside(absolute(entry.workspace), dataDir) ||
+        isInside(dataDir, absolute(entry.workspace))
+      ) {
+        problems.push(
+          `the ${entry.name} workspace and the data directory overlap`,
+        );
+      }
     }
     // The knowledge agent has the coding tools and no sandbox: if the project
     // it works on contains a profile, it could edit that profile's config.

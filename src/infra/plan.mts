@@ -12,6 +12,12 @@ export interface RenderedProfiles {
    * files, lost isolation properties); empty when they can.
    */
   readonly problems: readonly string[];
+  /**
+   * Obstructions that generating again cannot clear (a link, a file or a
+   * folder where a generated file belongs, a path that cannot be examined):
+   * each one is a step for a person.
+   */
+  readonly blockers?: readonly string[];
   /** Agent model both configs name; undefined when absent or they disagree. */
   readonly agentModel: string | undefined;
   /** Ollama URL both configs name; undefined when absent or they disagree. */
@@ -29,6 +35,8 @@ export interface RenderedProfiles {
 export interface MachineState {
   readonly hardware: Hardware;
   readonly ollamaReachable: boolean;
+  /** Why the model list could not be read, when it could not. */
+  readonly ollamaError?: string;
   /** Empty when Ollama is not reachable. */
   readonly installedModels: readonly ModelInfo[];
   /** Version line of the OpenClaw CLI, or undefined when it cannot be run. */
@@ -64,7 +72,7 @@ export type Action =
   /** A step that needs a person; it is printed, never run. */
   | {
       readonly kind: 'manual';
-      readonly topic: 'start-ollama' | 'install-openclaw';
+      readonly topic: 'start-ollama' | 'install-openclaw' | 'fix-profile-path';
       readonly instruction: string;
     };
 
@@ -192,8 +200,12 @@ export const computePlan = (
 
   if (!state.ollamaReachable) {
     actions.push({
-      instruction:
-        'Install and start Ollama (https://ollama.com/download), then run the plan again.',
+      // The server may be running and answer with an error: say what it said.
+      instruction: `Install and start Ollama (https://ollama.com/download), or look at its log if it is running, then run the plan again.${
+        state.ollamaError === undefined
+          ? ''
+          : ` The request for its model list failed: ${state.ollamaError}`
+      }`,
       kind: 'manual',
       topic: 'start-ollama',
     });
@@ -218,6 +230,14 @@ export const computePlan = (
           `No ${role} model fits this machine; pass one explicitly or free up memory.`,
         );
       } else if (!isInstalled(state.installedModels, model)) {
+        // Two roles may name the same tag: one pull serves both.
+        if (
+          actions.some(
+            (a) => a.kind === 'pull-model' && sameModel(a.model, model),
+          )
+        ) {
+          continue;
+        }
         actions.push({
           kind: 'pull-model',
           model,
@@ -251,12 +271,24 @@ export const computePlan = (
     });
   }
 
+  // Something in the way of the generated files is cleared by a person; the
+  // profiles are not generated over it.
+  const blockers = state.profiles.blockers ?? [];
+  for (const blocker of blockers) {
+    actions.push({
+      instruction: blocker,
+      kind: 'manual',
+      topic: 'fix-profile-path',
+    });
+  }
+
   // Profiles name a model and a server: only generate them once Ollama is
   // reachable and the model is installed or about to be pulled by this plan.
   if (
     state.ollamaReachable &&
     agentModel !== undefined &&
-    !unfit.has('agent')
+    !unfit.has('agent') &&
+    blockers.length === 0
   ) {
     const reason = staleReason(state.profiles, agentModel, options);
     if (reason !== undefined) {
@@ -276,6 +308,23 @@ export const describeAction = (action: Action): string => {
     return `generate the OpenClaw profiles for ${action.agentModel} (${action.reason})`;
   }
   return `MANUAL: ${action.instruction}`;
+};
+
+/**
+ * A line to print under a plan whose models are not known: the reason must be
+ * the real one (a server that is up but failed is not "not running"). Nothing
+ * when the models are known or none was asked for.
+ */
+export const modelsUnknownNote = (
+  state: MachineState,
+  plan: Plan,
+): string | undefined => {
+  if (state.ollamaReachable || plan.agentModel === undefined) {
+    return undefined;
+  }
+  return state.ollamaError === undefined
+    ? '(models are unknown while Ollama is not running)'
+    : '(models are unknown: the model list of Ollama could not be read)';
 };
 
 export const describePlan = (plan: Plan): string[] => [

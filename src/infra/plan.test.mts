@@ -7,6 +7,7 @@ import {
   describePlan,
   isInstalled,
   type MachineState,
+  modelsUnknownNote,
   type RenderedProfiles,
 } from './plan.mts';
 
@@ -331,6 +332,74 @@ describe('computePlan', () => {
       ).unmet,
       [],
     );
+  });
+
+  it('makes an obstruction a step for a person and generates nothing over it', () => {
+    const plan = computePlan(
+      converged({
+        profiles: rendered({
+          blockers: ['/o/web/openclaw.json is a link; refusing to write'],
+          problems: ['the web profile has no openclaw.json'],
+        }),
+      }),
+    );
+    assert.deepEqual(
+      plan.actions.map((a) => (a.kind === 'manual' ? a.topic : a.kind)),
+      ['fix-profile-path'],
+    );
+    assert.match(
+      describePlan(plan)[0] ?? '',
+      /MANUAL: \/o\/web\/openclaw\.json is a link/,
+    );
+  });
+
+  it('keeps the answer of a server that is up but fails, instead of saying it is not started', () => {
+    const plan = computePlan(
+      converged({
+        installedModels: [],
+        ollamaError: 'Ollama /api/tags failed with HTTP 500: out of memory',
+        ollamaReachable: false,
+      }),
+    );
+    const line = describePlan(plan)[0] ?? '';
+    assert.match(line, /look at its log if it is running/);
+    assert.match(line, /failed with HTTP 500: out of memory/);
+  });
+
+  it('says why the models are unknown, and not that Ollama is not running when it answered', () => {
+    const asked = computePlan(
+      converged({ installedModels: [], ollamaReachable: false }),
+      { agentModel: 'gpt-oss:latest' },
+    );
+    const down = converged({ installedModels: [], ollamaReachable: false });
+    assert.equal(
+      modelsUnknownNote(down, asked),
+      '(models are unknown while Ollama is not running)',
+    );
+    const failing = converged({
+      installedModels: [],
+      ollamaError: 'Ollama /api/tags failed with HTTP 500',
+      ollamaReachable: false,
+    });
+    assert.match(modelsUnknownNote(failing, asked) ?? '', /could not be read/);
+    assert.doesNotMatch(modelsUnknownNote(failing, asked) ?? '', /not running/);
+    // Known models, or none asked for: nothing to say.
+    assert.equal(
+      modelsUnknownNote(converged(), computePlan(converged())),
+      undefined,
+    );
+    assert.equal(modelsUnknownNote(down, computePlan(down)), undefined);
+  });
+
+  it('pulls a tag once when both roles choose it', () => {
+    const plan = computePlan(
+      converged({ installedModels: [], profiles: missing }),
+      {
+        agentModel: 'shared:latest',
+        embeddingModel: 'shared',
+      },
+    );
+    assert.equal(plan.actions.filter((a) => a.kind === 'pull-model').length, 1);
   });
 
   it('matches model names however the inventory spells them', () => {

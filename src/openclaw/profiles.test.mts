@@ -309,6 +309,32 @@ describe('checkProfiles', () => {
     );
   });
 
+  it('notices a workspace that lies outside its profile or in the cache', () => {
+    const set = buildProfiles(input());
+    const moved = (workspace: string): ProfileSet => {
+      const web = structuredClone(set.web) as OpenClawProfile;
+      const config = web.config as {
+        agents: {
+          defaults: { workspace: string };
+          entries: { research: { workspace: string } };
+        };
+      };
+      config.agents.defaults.workspace = workspace;
+      config.agents.entries.research.workspace = workspace;
+      return { ...set, web: { ...web, workspace } };
+    };
+    const outside = checkProfiles(moved('/elsewhere/ws')).join(' | ');
+    assert.match(
+      outside,
+      /web workspace \/elsewhere\/ws is outside its profile directory/,
+    );
+    const inCache = checkProfiles(moved('/srv/kc/.data/ws'), {
+      dataDir: '/srv/kc/.data',
+    }).join(' | ');
+    assert.match(inCache, /web workspace and the data directory overlap/);
+    assert.deepEqual(checkProfiles(set, { dataDir: '/srv/kc/.data' }), []);
+  });
+
   it('notices an agent whose own workspace is not the profile workspace', () => {
     const bad = tampered(good, 'web', (config) => {
       (
