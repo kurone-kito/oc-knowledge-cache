@@ -112,6 +112,10 @@ fact, and to say so when the cache has nothing relevant.
 
 ## Limits
 
+The [information-flow rules](architecture.md#information-flow-rules) say what
+may leave an instance and who has to approve a side effect; the limits below
+are what enforces them, or does not.
+
 - **`AGENTS.md` is guidance, not enforcement.** It makes a model use its skill
   and stay on topic; it does not stop a model that ignores it, and a page or a
   document can still try to talk a model out of it. The tool policy and the

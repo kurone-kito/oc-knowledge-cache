@@ -79,6 +79,41 @@ side and rejects a request that matches fingerprints of the ingested corpus
 deferred), no relay exists and the `knowledge` instance has no web access at
 all.
 
+## Information-flow rules
+
+These rules cover every flow between an instance and the outside, today and
+for features that come later. They add to the invariant above and do not
+loosen it: **NAS-derived content itself is never sent to the web instance or
+to any other Internet-facing service, with or without approval.** What rule 1
+allows is something different, a text abstracted from private-origin
+information, and only after a person has approved it. A query that the
+knowledge instance would send through the relay of #14 is such a text when it
+was abstracted from private-origin information, so the relay has to be
+designed under rule 1: the egress guard of #14 keeps content out, and it does
+not replace the approval.
+
+1. **Private-origin information is never forwarded automatically to the
+   public side, to GitHub or to a cloud LLM.** Private-origin means NAS
+   documents, cache hits, internal requests and the contents of mail. Only an
+   abstracted, public-safe text that was generated locally may leave, and
+   only after a person has read and approved it. The content itself never
+   leaves (the invariant above). A mask or a string-match filter can help the
+   reader; it is never the gate.
+2. **Public information flows to the private side in one direction only**, for
+   example best practices that the web instance researched. The private side
+   never puts internal details into a web query.
+3. **A side effect of an automated flow needs an approval step.** Writing a
+   ledger, sending mail and publishing are side effects. The approval has to
+   come from something that the agent cannot do on its own behalf: in the
+   research of #39 a model that held the approving tool approved a side effect
+   because of a note inside the data it was shown.
+4. **These rules do not replace the limits of the execution environment.** OS
+   permissions and network routes are the real boundary, as the limits in
+   [OpenClaw instances](openclaw.md#limits) say.
+
+A skill or an adapter that touches one of these flows cites the rule it
+relies on.
+
 ## Reuse before building
 
 | Need                    | Choice                  | Custom code                     | If it outgrows                      |
