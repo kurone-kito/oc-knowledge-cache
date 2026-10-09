@@ -56,6 +56,28 @@ Feed the knowledge cache from the host, not from an agent:
 pnpm run ingest --source <NAS share>
 ```
 
+## Talk to them
+
+An `openclaw` command talks to the instance whose two variables
+(`OPENCLAW_CONFIG_PATH` and `OPENCLAW_STATE_DIR`) are set in that terminal; the
+port and the token come from that profile's config. So `openclaw tui` opens
+the terminal UI of the instance you started the same way, `openclaw agent
+--agent <agent> --message "..."` asks it one question (`knowledge` or
+`research`, the one agent of that profile), and `openclaw
+dashboard` opens its Control UI. Without the variables, a command reaches the
+default `~/.openclaw` profile instead, never one of these two. The explicit
+form, `openclaw tui --url ws://127.0.0.1:<port> --token <token>` (the port of
+that profile: 19300 for knowledge and 19100 for web unless you chose others),
+ignores the config and needs the `gateway.auth.token` of the profile on the
+command line, where shell history and process lists show it. The gateways
+listen on the loopback interface only: from another machine, forward the
+port first, for example with `ssh -L 19300:127.0.0.1:19300 <host>`.
+
+Start a message to the knowledge instance with `$knowledge-search` to make
+the agent read its skill first: a local model that is not told to may browse
+the repository instead of searching the cache. The
+[README tutorial](../README.md#tutorial) walks through both instances.
+
 ## What each instance can do
 
 | Capability               | `web`               | `knowledge`                 |
