@@ -14,6 +14,24 @@ import { join, resolve } from 'node:path';
  */
 export type ProfileName = 'web' | 'knowledge';
 
+/**
+ * The skills each profile carries. A new skill is a folder under
+ * `openclaw/skills` and a line here; the rules that keep the web profile away
+ * from the cache do not have to change (see `PRIVATE_SKILLS`).
+ */
+export const PROFILE_SKILLS: Readonly<Record<ProfileName, readonly string[]>> =
+  {
+    knowledge: ['knowledge-search'],
+    web: ['web-research'],
+  };
+
+/**
+ * The skills that read or mention the cache or internal work. Only the
+ * knowledge profile may carry one: the web instance must not be told about
+ * what it cannot reach.
+ */
+export const PRIVATE_SKILLS: readonly string[] = ['knowledge-search'];
+
 export interface ProfileInput {
   /** Directory that receives one sub-directory per profile. */
   readonly outDir: string;
@@ -27,6 +45,10 @@ export interface ProfileInput {
   readonly ollamaUrl: string;
   /** Ollama model tag for the agents, e.g. `qwen3.6:35b-a3b-coding`. */
   readonly model: string;
+  /** The skills of each profile; `PROFILE_SKILLS` unless a test says otherwise. */
+  readonly skills?: Readonly<Record<ProfileName, readonly string[]>>;
+  /** The private skills; `PRIVATE_SKILLS` unless a test says otherwise. */
+  readonly privateSkills?: readonly string[];
   /** Model context window; the default suits the memory of a small GPU. */
   readonly contextWindow?: number | undefined;
   /** Gateway base ports; derived ports need about 120 free above each. */
@@ -57,6 +79,8 @@ export interface OpenClawProfile {
 export interface ProfileSet {
   readonly web: OpenClawProfile;
   readonly knowledge: OpenClawProfile;
+  /** The private skills the set was built with; `PRIVATE_SKILLS` when unset. */
+  readonly privateSkills?: readonly string[];
 }
 
 export const DEFAULT_PORTS = { knowledge: 19300, web: 19100 } as const;
@@ -187,6 +211,7 @@ const profile = (
   const dir = absolute(join(input.outDir, name));
   const workspace = `${dir}/workspace`;
   const base = shared(input, port, input.tokens[name], workspace);
+  const skills = (input.skills ?? PROFILE_SKILLS)[name];
   const projectRepo =
     input.projectRepo === undefined ? undefined : absolute(input.projectRepo);
 
@@ -200,7 +225,7 @@ const profile = (
             research: {
               name: 'Web research',
               sandbox: { mode: 'off' },
-              skills: ['web-research'],
+              skills: [...skills],
               tools: {
                 alsoAllow: ['read', 'group:web'],
                 deny: [...WEB_DENY],
@@ -225,7 +250,7 @@ const profile = (
       dir,
       name,
       port,
-      skills: ['web-research'],
+      skills,
       stateDir: `${dir}/state`,
       workspace,
     };
@@ -240,7 +265,7 @@ const profile = (
           knowledge: {
             name: 'Project knowledge',
             sandbox: { mode: 'off' },
-            skills: ['knowledge-search'],
+            skills: [...skills],
             tools: { deny: [...KNOWLEDGE_DENY], profile: 'coding' },
             workspace,
             ...(projectRepo === undefined ? {} : { cwd: projectRepo }),
@@ -262,7 +287,7 @@ const profile = (
     dir,
     name,
     port,
-    skills: ['knowledge-search'],
+    skills,
     stateDir: `${dir}/state`,
     workspace,
   };
@@ -273,6 +298,9 @@ export const buildProfiles = (input: ProfileInput): ProfileSet => {
   const ports = input.ports ?? DEFAULT_PORTS;
   const set: ProfileSet = {
     knowledge: profile(input, 'knowledge', ports.knowledge),
+    ...(input.privateSkills === undefined
+      ? {}
+      : { privateSkills: input.privateSkills }),
     web: profile(input, 'web', ports.web),
   };
   const problems = checkProfiles(set, input);
@@ -431,12 +459,35 @@ export const checkProfiles = (
 
   // The web instance must not be able to reach, or be told about, the cache.
   const webAgent = agentOf(web);
-  const webSkills = strings(get(webAgent, 'skills'));
-  if (webSkills.includes('knowledge-search')) {
-    problems.push('the web profile has the knowledge-search skill');
-  }
-  if (webSkills.length !== 1 || webSkills[0] !== 'web-research') {
-    problems.push('the web profile must have exactly the web-research skill');
+  // Each profile carries exactly the skills that are declared for it, and a
+  // private skill (one that reads or mentions the cache) is never in the web
+  // profile, declared or configured.
+  const privateSkills = set.privateSkills ?? PRIVATE_SKILLS;
+  for (const entry of [web, knowledge]) {
+    const raw = get(agentOf(entry), 'skills');
+    const configured = strings(raw);
+    // `strings` drops what is not a string; a list with such an entry, or
+    // with a skill twice, is not the declared one either.
+    const malformed =
+      !Array.isArray(raw) ||
+      raw.length !== configured.length ||
+      new Set(configured).size !== configured.length;
+    if (entry.name === 'web') {
+      for (const skill of new Set([...entry.skills, ...configured])) {
+        if (privateSkills.includes(skill)) {
+          problems.push(`the web profile has the ${skill} skill`);
+        }
+      }
+    }
+    const missing = entry.skills.filter((skill) => !configured.includes(skill));
+    const unexpected = configured.filter(
+      (skill) => !entry.skills.includes(skill),
+    );
+    if (missing.length > 0 || unexpected.length > 0 || malformed) {
+      problems.push(
+        `the ${entry.name} profile's skills differ from the declared ones (${entry.skills.join(', ') || 'none'}): missing ${missing.join(', ') || 'none'}, unexpected ${unexpected.join(', ') || 'none'}${malformed ? ', and the list holds something that is not a skill name or names one twice' : ''}`,
+      );
+    }
   }
   if (get(web.config, 'tools', 'fs', 'workspaceOnly') !== true) {
     problems.push('the web profile may read outside its workspace');
@@ -507,15 +558,6 @@ export const checkProfiles = (
     if (!knowledgeDeny.includes(tool)) {
       problems.push(`the knowledge profile does not deny ${tool}`);
     }
-  }
-  const knowledgeSkills = strings(get(knowledgeAgent, 'skills'));
-  if (
-    knowledgeSkills.length !== 1 ||
-    knowledgeSkills[0] !== 'knowledge-search'
-  ) {
-    problems.push(
-      'the knowledge profile must have exactly the knowledge-search skill',
-    );
   }
   return problems;
 };

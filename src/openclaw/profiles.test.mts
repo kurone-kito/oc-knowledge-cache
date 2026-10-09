@@ -282,7 +282,7 @@ describe('checkProfiles', () => {
       });
       assert.match(
         checkProfiles(bad).join(' | '),
-        /web profile must have exactly the web-research skill/,
+        /web profile's skills differ from the declared ones/,
         JSON.stringify(skills),
       );
     }
@@ -431,6 +431,96 @@ describe('checkProfiles', () => {
         ),
       /data directory is inside the web profile directory/,
     );
+  });
+});
+
+describe('declared skills', () => {
+  const declared = {
+    knowledge: ['knowledge-search', 'scratch-private', 'scratch-public'],
+    web: ['web-research', 'scratch-public'],
+  };
+  const privateSkills = ['knowledge-search', 'scratch-private'];
+
+  it('puts the declared skills of each profile into its config and its profile', () => {
+    const set = buildProfiles(input({ privateSkills, skills: declared }));
+    assert.deepEqual(set.knowledge.skills, declared.knowledge);
+    assert.deepEqual(set.web.skills, declared.web);
+    assert.deepEqual(
+      at(set.knowledge.config, 'agents', 'entries', 'knowledge', 'skills'),
+      declared.knowledge,
+    );
+    assert.deepEqual(
+      at(set.web.config, 'agents', 'entries', 'research', 'skills'),
+      declared.web,
+    );
+    assert.deepEqual(checkProfiles(set), []);
+  });
+
+  it('refuses a private skill declared for the web profile, naming it', () => {
+    assert.throws(
+      () =>
+        buildProfiles(
+          input({
+            privateSkills,
+            skills: { ...declared, web: ['web-research', 'scratch-private'] },
+          }),
+        ),
+      /web profile has the scratch-private skill/,
+    );
+  });
+
+  it('notices a private skill that was added to the web config afterwards', () => {
+    const set = buildProfiles(input({ privateSkills, skills: declared }));
+    const bad = tampered(set, 'web', (config) => {
+      (
+        at(config, 'agents', 'entries', 'research') as { skills: string[] }
+      ).skills.push('scratch-private');
+    });
+    const problems = checkProfiles(bad).join(' | ');
+    assert.match(problems, /web profile has the scratch-private skill/);
+    assert.match(problems, /unexpected scratch-private/);
+  });
+
+  it('notices a skill list that holds a non-string, a duplicate, or no list at all', () => {
+    const set = buildProfiles(input());
+    for (const skills of [
+      ['web-research', 123],
+      ['web-research', 'web-research'],
+      'web-research',
+      undefined,
+    ]) {
+      const bad = tampered(set, 'web', (config) => {
+        (
+          at(config, 'agents', 'entries', 'research') as { skills: unknown }
+        ).skills = skills;
+      });
+      assert.match(
+        checkProfiles(bad).join(' | '),
+        /web profile's skills differ from the declared ones/,
+        JSON.stringify(skills) ?? 'undefined',
+      );
+    }
+  });
+
+  it('notices a declared skill that the config lost, and one it was never given', () => {
+    const set = buildProfiles(input({ privateSkills, skills: declared }));
+    const bad = tampered(set, 'knowledge', (config) => {
+      (
+        at(config, 'agents', 'entries', 'knowledge') as { skills: string[] }
+      ).skills = ['knowledge-search', 'other'];
+    });
+    const problems = checkProfiles(bad).join(' | ');
+    assert.match(
+      problems,
+      /knowledge profile's skills differ from the declared ones.*missing scratch-private, scratch-public, unexpected other/,
+    );
+  });
+
+  it('keeps the default declaration: one skill each, and only knowledge-search is private', () => {
+    const set = buildProfiles(input());
+    assert.deepEqual(set.web.skills, ['web-research']);
+    assert.deepEqual(set.knowledge.skills, ['knowledge-search']);
+    assert.equal(set.privateSkills, undefined);
   });
 });
 

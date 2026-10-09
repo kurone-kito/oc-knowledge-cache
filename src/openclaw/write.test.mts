@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import {
   chmod,
+  cp,
   link,
   mkdir,
   readdir,
@@ -221,6 +222,73 @@ describe('writeProfiles and links', () => {
       /is a link; refusing to write/,
     );
     assert.deepEqual(await readdir(dataDir), []);
+  });
+});
+
+describe('skills declared for a profile', () => {
+  it('installs a private skill only for knowledge, a public one for both, and drops one that is no longer declared', async (t) => {
+    const root = await tempDir(t);
+    // A copy of the sources with two more skills, so that a declaration is all
+    // that it takes to install them.
+    const repo = join(root, 'repo');
+    await cp(join(repoRoot, 'openclaw'), join(repo, 'openclaw'), {
+      recursive: true,
+    });
+    for (const name of ['scratch-private', 'scratch-public']) {
+      const folder = join(repo, 'openclaw', 'skills', name);
+      await mkdir(folder, { recursive: true });
+      await writeFile(
+        join(folder, 'SKILL.md'),
+        `---
+name: ${name}
+description: A throw-away skill of a test, used to show that a declaration is enough.
+---
+
+# ${name}
+`,
+      );
+    }
+    const base = {
+      dataDir: join(root, 'data'),
+      model: 'test-model:latest',
+      ollamaUrl: 'http://127.0.0.1:11434',
+      outDir: join(root, 'profiles'),
+      repoRoot: repo,
+      tokens: { knowledge: 'k'.repeat(24), web: 'w'.repeat(24) },
+    };
+
+    const wide = buildProfiles({
+      ...base,
+      privateSkills: ['knowledge-search', 'scratch-private'],
+      skills: {
+        knowledge: ['knowledge-search', 'scratch-private', 'scratch-public'],
+        web: ['web-research', 'scratch-public'],
+      },
+    });
+    await writeProfiles(wide, { dataDir: base.dataDir, repoRoot: repo });
+    assert.ok(existsSync(skillFile(wide, 'knowledge', 'scratch-private')));
+    assert.ok(existsSync(skillFile(wide, 'knowledge', 'scratch-public')));
+    assert.ok(existsSync(skillFile(wide, 'web', 'scratch-public')));
+    assert.equal(
+      existsSync(skillFile(wide, 'web', 'scratch-private')),
+      false,
+      'a private skill never reaches the web workspace',
+    );
+
+    // The declaration shrinks to the default: the workspaces lose the rest.
+    const narrow = buildProfiles(base);
+    await writeProfiles(narrow, { dataDir: base.dataDir, repoRoot: repo });
+    for (const profile of ['web', 'knowledge'] as const) {
+      for (const name of ['scratch-private', 'scratch-public']) {
+        assert.equal(
+          existsSync(skillFile(narrow, profile, name)),
+          false,
+          `${profile} no longer has ${name}`,
+        );
+      }
+    }
+    assert.ok(existsSync(skillFile(narrow, 'knowledge', 'knowledge-search')));
+    assert.ok(existsSync(skillFile(narrow, 'web', 'web-research')));
   });
 });
 
