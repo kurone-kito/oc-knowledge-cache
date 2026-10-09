@@ -18,7 +18,7 @@ import {
   validateWithOpenClaw,
 } from '../openclaw/validate.mts';
 import { writeProfiles } from '../openclaw/write.mts';
-import { optionalNumber, scriptArgs } from './options.mts';
+import { optionalNumber, resolveDataDir, scriptArgs } from './options.mts';
 
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -33,7 +33,8 @@ Generates the two isolated OpenClaw profiles of this system:
 
 Options:
   --out <dir>             where to write the profiles (default .openclaw)
-  --data <dir>            data directory with the cache (default .data)
+  --data <dir>            data directory with the cache
+                          (default $KC_DATA_DIR, else .data)
   --project-repo <dir>    repository the knowledge agent works on
   --ram-gib <n>           memory of the machine that runs Ollama, when it is not
                           this one (used to pick the model)
@@ -118,7 +119,7 @@ const main = async (): Promise<number> => {
 
   // Where the files really end up, so a link cannot hide an overlap.
   const outDir = await realPathOf(values.out ?? '.openclaw');
-  const dataDir = await realPathOf(values.data ?? '.data');
+  const dataDir = await realPathOf(resolveDataDir(values.data));
   const projectRepo =
     values['project-repo'] === undefined
       ? undefined
