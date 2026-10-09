@@ -739,6 +739,43 @@ describe('profiles on disk', () => {
     );
   });
 
+  it("asks for a generation when the operating instructions are missing or are not the repository's", async (t) => {
+    const { paths } = await generated(t);
+    // With the root of the repository, as `provision` has it: only then can
+    // the file be compared with its source.
+    const state = () =>
+      gatherState(
+        { ...paths, repoRoot },
+        probe({ readText: systemProbe(URL).readText }),
+      );
+    const file = join(paths.outDir, 'knowledge', 'workspace', 'AGENTS.md');
+    const original = await readFile(file, 'utf8');
+    assert.deepEqual((await state()).profiles.problems, []);
+
+    // What OpenClaw seeds into a workspace of its own accord.
+    await writeFile(file, '# AGENTS.md - Your Workspace\n');
+    const seeded = await state();
+    assert.ok(
+      seeded.profiles.problems.some((p) =>
+        /knowledge profile's AGENTS.md differs from the repository's/.test(p),
+      ),
+    );
+    assert.deepEqual(
+      computePlan(seeded, { ollamaUrl: URL }).actions.map((a) => a.kind),
+      ['render-profiles'],
+    );
+
+    await rm(file);
+    assert.ok(
+      (await state()).profiles.problems.some((p) =>
+        /knowledge profile lacks its AGENTS.md/.test(p),
+      ),
+    );
+
+    await writeFile(file, original);
+    assert.deepEqual((await state()).profiles.problems, []);
+  });
+
   it('notices a missing skill', async (t) => {
     const { look, paths } = await generated(t);
     await rm(join(paths.outDir, 'knowledge', 'workspace', 'skills'), {

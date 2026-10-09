@@ -256,10 +256,11 @@ Useful keys and commands (the full list is in the
 #### Ask the knowledge instance
 
 The knowledge instance has one skill, `knowledge-search`: it queries the
-cache with `kc:search` and cites where each fact comes from. Local models do
-not always pick a skill on their own (in one trial a plain question sent the
-agent browsing the repository instead of searching the cache), so name the
-skill at the start of the message:
+cache with `kc:search` and cites where each fact comes from. The `AGENTS.md`
+that is generated into its workspace tells the agent to use that skill for
+any question about the design documents. A local model can still ignore it;
+when an answer does not come from the cache, name the skill at the start of
+the message:
 
 ```text
 $knowledge-search What is the maximum quantity of the cart? Cite the file and the cell range.
@@ -348,7 +349,7 @@ example with `ssh -L 19300:127.0.0.1:19300 <host>`.
 
 | What you see | Why and what to do |
 | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| The agent browses the repository and never searches the cache, or says the cache is "not indexed" | It did not use its skill. Start the message with `$knowledge-search` (see above). |
+| The agent browses the repository and never searches the cache, or says the cache is "not indexed" | It did not use its skill. Start the message with `$knowledge-search` (see above), and run `pnpm run provision plan` with your usual options: it reports a workspace whose `AGENTS.md` is missing or is not the generated one. |
 | `No knowledge cache at .data/store.sqlite (run the ingest command first)` | `ingest` has not run for the data folder the profile uses (default `.data`), or the agent ran `kc:search` without the skill's settings. Run `pnpm run ingest --source <share>`, and pass the same `--out`, `--data`, `--project-repo` and `--ollama-url` to `provision` and `openclaw:generate` every time. |
 | `Gateway not reachable at ws://127.0.0.1:19300 (ECONNREFUSED)` | The gateway is not running (it takes a while to start), or this terminal talks to another profile because the two variables are missing. |
 | The TUI header shows another agent than you expected | Same cause: the variables of a different instance are set in this terminal. |

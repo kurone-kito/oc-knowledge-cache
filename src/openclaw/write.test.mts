@@ -18,6 +18,8 @@ import { fileURLToPath } from 'node:url';
 import { tempDir } from '../shared/temp.mts';
 import { buildProfiles, type ProfileSet } from './profiles.mts';
 import {
+  INSTRUCTIONS_FILE,
+  instructionsSource,
   linkProblems,
   readExistingTokens,
   renderSkillFile,
@@ -219,6 +221,125 @@ describe('writeProfiles and links', () => {
       /is a link; refusing to write/,
     );
     assert.deepEqual(await readdir(dataDir), []);
+  });
+});
+
+describe('operating instructions', () => {
+  /** What OpenClaw seeds into a workspace of its own accord. */
+  const SEEDED = '# AGENTS.md - Your Workspace\n';
+  const instructionsOf = (set: ProfileSet, profile: 'web' | 'knowledge') =>
+    join(set[profile].workspace, INSTRUCTIONS_FILE);
+
+  it('writes the instructions of each profile from the repository', async (t) => {
+    const { dataDir, set } = await generate(t);
+    const written = await writeProfiles(set, { dataDir, repoRoot });
+    for (const name of ['web', 'knowledge'] as const) {
+      const file = instructionsOf(set, name);
+      assert.ok(written.includes(file), `${name} instructions are reported`);
+      assert.equal(
+        await readFile(file, 'utf8'),
+        await readFile(instructionsSource(repoRoot, name), 'utf8'),
+      );
+    }
+    // No copy of anything that was not there.
+    assert.equal(existsSync(`${instructionsOf(set, 'knowledge')}.bak`), false);
+  });
+
+  it('points the knowledge agent at its skill, and keeps the web agent off the cache', async () => {
+    const knowledge = await readFile(
+      instructionsSource(repoRoot, 'knowledge'),
+      'utf8',
+    );
+    assert.match(knowledge, /skills\/knowledge-search\/SKILL\.md/);
+    const web = await readFile(instructionsSource(repoRoot, 'web'), 'utf8');
+    assert.doesNotMatch(web, /knowledge-search|kc:search/);
+  });
+
+  it('keeps what it replaces as AGENTS.md.bak, once, and only when it differs', async (t) => {
+    const { dataDir, set } = await generate(t);
+    await writeProfiles(set, { dataDir, repoRoot });
+    const file = instructionsOf(set, 'knowledge');
+    const generated = await readFile(file, 'utf8');
+
+    // Generating again over an identical file makes no copy.
+    await writeProfiles(set, { dataDir, repoRoot });
+    assert.equal(existsSync(`${file}.bak`), false);
+
+    // OpenClaw's template, or a hand edit, is replaced and kept.
+    await writeFile(file, SEEDED);
+    await writeProfiles(set, { dataDir, repoRoot });
+    assert.equal(await readFile(file, 'utf8'), generated);
+    assert.equal(await readFile(`${file}.bak`, 'utf8'), SEEDED);
+
+    // Identical again: the copy stays as it was.
+    await writeProfiles(set, { dataDir, repoRoot });
+    assert.equal(await readFile(`${file}.bak`, 'utf8'), SEEDED);
+  });
+
+  it('refuses a link in the place of the instructions, and writes nothing through it', async (t) => {
+    const { dataDir, root, set } = await generate(t);
+    await writeProfiles(set, { dataDir, repoRoot });
+    const file = instructionsOf(set, 'knowledge');
+    const elsewhere = join(root, 'elsewhere.md');
+    await writeFile(elsewhere, 'untouched');
+    await rm(file);
+    try {
+      await symlink(elsewhere, file, 'file');
+    } catch {
+      t.skip('file links cannot be created here');
+      return;
+    }
+    await assert.rejects(
+      writeProfiles(set, { dataDir, repoRoot }),
+      /is a link; refusing to write/,
+    );
+    assert.equal(await readFile(elsewhere, 'utf8'), 'untouched');
+    assert.ok(
+      (await linkProblems(set.knowledge)).some((p) => p.startsWith(file)),
+    );
+  });
+
+  it('refuses a link in the place of the copy before anything is written', async (t) => {
+    const { dataDir, root, set } = await generate(t);
+    const copy = `${instructionsOf(set, 'knowledge')}.bak`;
+    const elsewhere = join(root, 'elsewhere.md');
+    await writeFile(elsewhere, 'untouched');
+    await mkdir(set.knowledge.workspace, { recursive: true });
+    try {
+      await symlink(elsewhere, copy, 'file');
+    } catch {
+      t.skip('file links cannot be created here');
+      return;
+    }
+    await assert.rejects(
+      writeProfiles(set, { dataDir, repoRoot }),
+      /is a link; refusing to write/,
+    );
+    assert.equal(await readFile(elsewhere, 'utf8'), 'untouched');
+    // Nothing of either profile exists: the refusal came before the writing.
+    assert.equal(existsSync(set.web.workspace), false);
+    assert.equal(existsSync(instructionsOf(set, 'knowledge')), false);
+    assert.equal(existsSync(set.knowledge.configPath), false);
+  });
+
+  it('refuses a folder where the instructions or their copy belong, before anything is written', async (t) => {
+    for (const suffix of ['', '.bak']) {
+      const { dataDir, set } = await generate(t);
+      await mkdir(`${instructionsOf(set, 'knowledge')}${suffix}`, {
+        recursive: true,
+      });
+      await assert.rejects(
+        writeProfiles(set, { dataDir, repoRoot }),
+        /is a folder where a file belongs/,
+      );
+      assert.equal(existsSync(set.web.workspace), false, suffix);
+      assert.equal(existsSync(set.knowledge.configPath), false, suffix);
+      assert.equal(
+        existsSync(join(set.knowledge.workspace, 'skills')),
+        false,
+        suffix,
+      );
+    }
   });
 });
 

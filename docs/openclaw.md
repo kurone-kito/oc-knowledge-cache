@@ -17,11 +17,26 @@ It picks the best installed agent model with `models:recommend` (override with
 .openclaw/
   web/
     openclaw.json            config for the web instance
+    workspace/AGENTS.md      operating instructions of the web agent
     workspace/skills/web-research/SKILL.md
   knowledge/
     openclaw.json            config for the knowledge instance
+    workspace/AGENTS.md      operating instructions of the knowledge agent
     workspace/skills/knowledge-search/SKILL.md
 ```
+
+The `AGENTS.md` of each workspace is written from
+`openclaw/workspace/<profile>/instructions.md`. For the knowledge agent it says
+that the design documents are reachable only through the search skill, which
+to read first, and not to answer from general knowledge when the cache has
+nothing. OpenClaw would otherwise seed a generic assistant template (search
+the web, check calendars, commit and push) that fits neither instance, and a
+local model then often does not use its skill: with six plain questions the
+agent searched the cache once under that template and six times under the
+generated instructions. Like the skills, the file is generated: edits are
+replaced when the profiles are generated again, and the previous copy is kept
+as `AGENTS.md.bak`. Put rules of your own in the `AGENTS.md` of the project
+repository, which the knowledge agent reads as project context.
 
 Running it again rewrites the same files and keeps the gateway tokens, so
 running gateways and clients stay valid. `--dry-run` prints the configs with
@@ -73,9 +88,8 @@ command line, where shell history and process lists show it. The gateways
 listen on the loopback interface only: from another machine, forward the
 port first, for example with `ssh -L 19300:127.0.0.1:19300 <host>`.
 
-Start a message to the knowledge instance with `$knowledge-search` to make
-the agent read its skill first: a local model that is not told to may browse
-the repository instead of searching the cache. The
+If a model still ignores the search skill, start the message with
+`$knowledge-search` to make the agent read it first. The
 [README tutorial](../README.md#tutorial) walks through both instances.
 
 ## What each instance can do
@@ -98,6 +112,10 @@ fact, and to say so when the cache has nothing relevant.
 
 ## Limits
 
+- **`AGENTS.md` is guidance, not enforcement.** It makes a model use its skill
+  and stay on topic; it does not stop a model that ignores it, and a page or a
+  document can still try to talk a model out of it. The tool policy and the
+  limits below are what hold.
 - **Tool policy is not a network sandbox.** The knowledge instance has no web
   *tools*, but its shell tool can run any command, including `curl`. For a
   hard guarantee that nothing derived from the NAS leaves the machine, run
@@ -147,7 +165,8 @@ existing cache keeps its embedding model. `apply` pulls the missing models and
 generates the profiles. Starting Ollama and installing OpenClaw are printed as
 MANUAL steps and never done for you.
 
-The profiles count as up to date only when both configs and both skills exist,
+The profiles count as up to date only when both configs, both skills and both
+`AGENTS.md` files exist (the files equal to the repository's),
 the isolation properties still hold (including each agent's own workspace and
 the project directory), the knowledge skill points at this run's `--data` and
 this repository, and they name the chosen agent model, the `--ollama-url` and
@@ -169,7 +188,8 @@ embedding pull does not hold them back. A model download that goes silent for
 two minutes (`--pull-idle-timeout`) fails instead of hanging.
 
 Generating the profiles again replaces their config files; the previous config
-(with anything you added by hand) is kept as `openclaw.json.bak` next to it.
+(with anything you added by hand) is kept as `openclaw.json.bak` next to it,
+and likewise `AGENTS.md.bak` for the instructions.
 For an Ollama on another machine, pass `--ram-gib`, `--vram-gib` and
 `--unified-memory` so that the models are chosen for that machine, not for this
 one.
