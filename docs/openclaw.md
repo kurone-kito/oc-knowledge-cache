@@ -2,7 +2,9 @@
 
 The system uses two OpenClaw gateways, generated from this repository as two
 isolated profiles (see [architecture](architecture.md) for why). This page
-shows how to generate and start them and what they can and cannot do.
+shows how to generate and start them and what they can and cannot do. The
+`knowledge` instance is the private hub; where a new capability belongs is
+decided in [architecture](architecture.md#where-a-new-capability-goes).
 
 ## Generate the profiles
 
