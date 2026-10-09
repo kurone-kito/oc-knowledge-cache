@@ -12,7 +12,7 @@ import {
   DEFAULT_CONTEXT_WINDOW,
   DEFAULT_PORTS,
 } from '../openclaw/profiles.mts';
-import { startCommands } from '../openclaw/shell.mts';
+import { afterGeneration } from '../openclaw/shell.mts';
 import {
   resolveOpenClawCommand,
   validateWithOpenClaw,
@@ -170,9 +170,7 @@ const main = async (): Promise<number> => {
     [
       `Wrote ${written.length} files under ${outDir}`,
       '',
-      'Start the two gateways in separate terminals:',
-      ...startCommands(set.web),
-      ...startCommands(set.knowledge),
+      ...afterGeneration(set, 'Start the two gateways in separate terminals:'),
       '',
       'The knowledge profile can read the cache in:',
       `  ${dataDir}`,

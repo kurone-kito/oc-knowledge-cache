@@ -79,7 +79,9 @@ port and the token come from that profile's config. So `openclaw tui` opens
 the terminal UI of the instance you started the same way, `openclaw agent
 --agent <agent> --message "..."` asks it one question (`knowledge` or
 `research`, the one agent of that profile), and `openclaw
-dashboard` opens its Control UI. Without the variables, a command reaches the
+dashboard` opens its Control UI. The generator prints the lines for the
+terminal UI and for one question, below the lines that start the gateways.
+Without the variables, a command reaches the
 default `~/.openclaw` profile instead, never one of these two. The explicit
 form, `openclaw tui --url ws://127.0.0.1:<port> --token <token>` (the port of
 that profile: 19300 for knowledge and 19100 for web unless you chose others),
