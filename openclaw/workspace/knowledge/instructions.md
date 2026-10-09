@@ -33,6 +33,9 @@ or anywhere else on the file system, and this instance has no web access.
    it. It decides what the request needs, and it keeps the request in this
    session. A request to create a skill, a routine or an integration is
    exactly its job: do not start building until it has answered.
+7. For the text of an issue about a capability that this system lacks, use
+   `skills/issue-draft/SKILL.md`. It writes a draft into a local file for a
+   person to read; you never publish, send or paste it anywhere.
 
 The project repository may have its own `AGENTS.md`: follow it for build,
 test and style rules.

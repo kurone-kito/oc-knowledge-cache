@@ -77,27 +77,35 @@ export const hasName = (names: readonly string[], name: string): boolean =>
 /**
  * Fills the placeholders of a skill file. The Ollama server is the one the
  * profile itself uses, so the search embeds its question with the same model
- * host as the agents.
+ * host as the agents. `{{KC_WORKSPACE}}` is the profile's own workspace, for a
+ * skill that writes there with a full path (an agent's working directory can be
+ * the project repository); without a workspace it is left as it is.
  */
 export const renderSkillFile = (
   text: string,
   options: WriteOptions,
   ollamaUrl: string,
+  workspace?: string,
 ): string =>
   // One pass with a callback: a value that contains "$&", "$$" or even a
   // placeholder of its own is inserted as it is and never scanned again. The
-  // data directory and the server go into a JSON string of the skill, so they
-  // are escaped for it.
-  text.replace(/\{\{KC_(REPO|DATA|OLLAMA)\}\}/g, (_match, name: string) => {
-    switch (name) {
-      case 'REPO':
-        return jsonText(posix(options.repoRoot));
-      case 'DATA':
-        return jsonText(posix(options.dataDir));
-      default:
-        return jsonText(ollamaUrl);
-    }
-  });
+  // paths and the server go into a JSON string of the skill, so they are
+  // escaped for it.
+  text.replace(
+    /\{\{KC_(REPO|DATA|OLLAMA|WORKSPACE)\}\}/g,
+    (match, name: string) => {
+      switch (name) {
+        case 'REPO':
+          return jsonText(posix(options.repoRoot));
+        case 'DATA':
+          return jsonText(posix(options.dataDir));
+        case 'WORKSPACE':
+          return workspace === undefined ? match : jsonText(posix(workspace));
+        default:
+          return jsonText(ollamaUrl);
+      }
+    },
+  );
 
 /**
  * What is wrong with writing at `path`: a link in its place would carry the
@@ -231,6 +239,7 @@ const copySkill = async (
   target: string,
   options: WriteOptions,
   ollamaUrl: string,
+  workspace: string,
 ): Promise<string[]> => {
   const source = join(skillsSource(options.repoRoot), name);
   const written: string[] = [];
@@ -256,7 +265,12 @@ const copySkill = async (
     await writeBeside(
       to,
       relative.toLowerCase().endsWith('.md')
-        ? renderSkillFile(content.toString('utf8'), options, ollamaUrl)
+        ? renderSkillFile(
+            content.toString('utf8'),
+            options,
+            ollamaUrl,
+            workspace,
+          )
         : content,
       false,
     );
@@ -333,6 +347,7 @@ const writeProfile = async (
         join(skillsDirectory, name),
         options,
         ollamaUrlOf(profile),
+        profile.workspace,
       )),
     );
   }
