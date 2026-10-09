@@ -14,6 +14,8 @@ import {
 } from '../openclaw/profiles.mts';
 import {
   hasName,
+  INSTRUCTIONS_FILE,
+  instructionsSource,
   jsonText,
   linkProblems,
   renderSkillFile,
@@ -327,6 +329,27 @@ export const inspectProfiles = async (
               );
             }
           }
+        }
+      }
+      // The operating instructions are generated too: without them the agent
+      // has OpenClaw's generic template (or none), and with an edited or stale
+      // copy a model may not use its skill. Where the repository's source is
+      // known, the file must be exactly what a generation writes from it.
+      const instructions = await readText(
+        join(profile.workspace, INSTRUCTIONS_FILE),
+      );
+      if (instructions === undefined) {
+        problems.push(
+          `the ${profile.name} profile lacks its ${INSTRUCTIONS_FILE}`,
+        );
+      } else if (requested.repoRoot !== undefined) {
+        const source = await readText(
+          instructionsSource(requested.repoRoot, profile.name),
+        );
+        if (source !== undefined && instructions !== source) {
+          problems.push(
+            `the ${profile.name} profile's ${INSTRUCTIONS_FILE} differs from the repository's`,
+          );
         }
       }
     }

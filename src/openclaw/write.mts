@@ -10,7 +10,12 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { type OpenClawProfile, type ProfileSet, posix } from './profiles.mts';
+import {
+  type OpenClawProfile,
+  type ProfileName,
+  type ProfileSet,
+  posix,
+} from './profiles.mts';
 
 export interface WriteOptions {
   /** This repository; its `openclaw/skills` folder holds the skill sources. */
@@ -22,6 +27,19 @@ export interface WriteOptions {
 /** Where the skill sources live, relative to the repository root. */
 const skillsSource = (repoRoot: string): string =>
   join(repoRoot, 'openclaw', 'skills');
+
+/** The operating instructions of a profile, as the agent finds them. */
+export const INSTRUCTIONS_FILE = 'AGENTS.md';
+
+/**
+ * Where the instructions of a profile are kept in this repository. The source
+ * is not called `AGENTS.md`, so that tools which work on this repository do
+ * not take it for instructions of their own.
+ */
+export const instructionsSource = (
+  repoRoot: string,
+  name: ProfileName,
+): string => join(repoRoot, 'openclaw', 'workspace', name, 'instructions.md');
 
 /**
  * The names in a folder. With `all`, links and plain files count as well: a
@@ -124,6 +142,19 @@ const folderProblem = async (path: string): Promise<string | undefined> => {
     : undefined;
 };
 
+/** A folder where a file of the profile belongs: it cannot be replaced. */
+const fileProblem = async (path: string): Promise<string | undefined> => {
+  const info = await lstat(path).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') {
+      return undefined;
+    }
+    throw error;
+  });
+  return info?.isDirectory()
+    ? `${path} is a folder where a file belongs; refusing to write generated files there. Remove or move it.`
+    : undefined;
+};
+
 const refuseLink = async (path: string): Promise<void> => {
   const problem = await linkProblem(path);
   if (problem !== undefined) {
@@ -150,6 +181,10 @@ export const linkProblems = async (
       join(skills, name),
       join(skills, name, 'SKILL.md'),
     ]),
+    join(profile.workspace, INSTRUCTIONS_FILE),
+    // The copy that a generation may make of it: refused here, before anything
+    // is written, and not only when the copy is made.
+    `${join(profile.workspace, INSTRUCTIONS_FILE)}.bak`,
     profile.configPath,
   ]) {
     const problem = await linkProblem(path);
@@ -166,6 +201,17 @@ export const linkProblems = async (
     ...profile.skills.map((name) => join(skills, name)),
   ]) {
     const problem = await folderProblem(path);
+    if (problem !== undefined) {
+      problems.push(problem);
+    }
+  }
+  // The other way round: a folder where the instructions, or the copy of
+  // them, belong would fail the generation half way, after the skills.
+  for (const path of [
+    join(profile.workspace, INSTRUCTIONS_FILE),
+    `${join(profile.workspace, INSTRUCTIONS_FILE)}.bak`,
+  ]) {
+    const problem = await fileProblem(path);
     if (problem !== undefined) {
       problems.push(problem);
     }
@@ -290,6 +336,31 @@ const writeProfile = async (
       )),
     );
   }
+
+  // The instructions are generated like the skills: what a person or the
+  // agent changed in them is kept in the previous copy, `AGENTS.md.bak`. (A
+  // workspace that OpenClaw already seeded holds its generic template here.)
+  const instructions = await readFile(
+    instructionsSource(options.repoRoot, profile.name),
+    'utf8',
+  );
+  const instructionsFile = join(profile.workspace, INSTRUCTIONS_FILE);
+  await refuseLink(instructionsFile);
+  const earlier = await readFile(instructionsFile, 'utf8').catch(
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') {
+        return undefined;
+      }
+      throw error;
+    },
+  );
+  if (earlier !== undefined && earlier !== instructions) {
+    const copy = `${instructionsFile}.bak`;
+    await refuseLink(copy);
+    await writeBeside(copy, earlier, false);
+  }
+  await writeBeside(instructionsFile, instructions, false);
+  written.push(instructionsFile);
 
   // Regenerating replaces the config: whatever a person added to it by hand
   // is kept in the previous copy, `openclaw.json.bak`.
