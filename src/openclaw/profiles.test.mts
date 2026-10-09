@@ -143,7 +143,10 @@ describe('buildProfiles', () => {
   it('gives the knowledge profile coding tools and the cache skill, but no web', () => {
     const { knowledge } = buildProfiles(input());
     const agent = at(knowledge.config, 'agents', 'entries', 'knowledge');
-    assert.deepEqual(at(agent, 'skills'), ['knowledge-search']);
+    assert.deepEqual(at(agent, 'skills'), [
+      'knowledge-search',
+      'request-triage',
+    ]);
     assert.equal(at(agent, 'tools', 'profile'), 'coding');
     for (const denied of [
       'group:web',
@@ -154,7 +157,7 @@ describe('buildProfiles', () => {
       assert.ok(strings(at(agent, 'tools', 'deny')).includes(denied), denied);
     }
     assert.equal(at(agent, 'cwd'), abs('/work/project'));
-    assert.deepEqual(knowledge.skills, ['knowledge-search']);
+    assert.deepEqual(knowledge.skills, ['knowledge-search', 'request-triage']);
   });
 
   it('works in its own workspace when no project repository is given', () => {
@@ -516,10 +519,13 @@ describe('declared skills', () => {
     );
   });
 
-  it('keeps the default declaration: one skill each, and only knowledge-search is private', () => {
+  it('keeps the default declaration: the web profile has one skill, knowledge the two private ones', () => {
     const set = buildProfiles(input());
     assert.deepEqual(set.web.skills, ['web-research']);
-    assert.deepEqual(set.knowledge.skills, ['knowledge-search']);
+    assert.deepEqual(set.knowledge.skills, [
+      'knowledge-search',
+      'request-triage',
+    ]);
     assert.equal(set.privateSkills, undefined);
   });
 });
