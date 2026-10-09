@@ -3,6 +3,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { PRIVATE_SKILLS, PROFILE_SKILLS } from './profiles.mts';
 
 const skillsRoot = fileURLToPath(
   new URL('../../openclaw/skills', import.meta.url),
@@ -29,8 +30,28 @@ describe('OpenClaw skills', async () => {
     .map((entry) => entry.name)
     .sort();
 
-  it('are exactly the two this system uses', () => {
-    assert.deepEqual(skills, ['knowledge-search', 'web-research']);
+  it('are exactly the ones that a profile declares', () => {
+    const declared = [
+      ...new Set([...PROFILE_SKILLS.knowledge, ...PROFILE_SKILLS.web]),
+    ].sort();
+    assert.deepEqual(
+      skills,
+      declared,
+      'a skill folder with no declaration is never installed; a declaration with no folder cannot be installed',
+    );
+  });
+
+  it('keep every private skill out of the web profile', () => {
+    for (const skill of PRIVATE_SKILLS) {
+      assert.ok(
+        PROFILE_SKILLS.knowledge.includes(skill),
+        `${skill} is declared for knowledge`,
+      );
+      assert.ok(
+        !PROFILE_SKILLS.web.includes(skill),
+        `${skill} is not declared for web`,
+      );
+    }
   });
 
   for (const skill of skills) {

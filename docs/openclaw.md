@@ -71,6 +71,24 @@ Feed the knowledge cache from the host, not from an agent:
 pnpm run ingest --source <NAS share>
 ```
 
+## Adding a skill
+
+1. Add the folder `openclaw/skills/<name>/SKILL.md`. The frontmatter `name` is
+   the folder name, and the `description` says when to use the skill. The
+   placeholders such as `{{KC_REPO}}` are filled in when the profiles are
+   generated.
+2. Declare it for the profile that carries it, in `PROFILE_SKILLS` in
+   `src/openclaw/profiles.mts`.
+3. If it reads or mentions the cache or internal work, it is private: list it
+   in `PRIVATE_SKILLS` as well. Only the knowledge profile may carry a private
+   skill, and the checks reject a web profile that has one, declared or
+   configured.
+
+`pnpm run provision plan` reports a workspace that lacks a declared skill, and
+a generation installs it and removes the skills that are no longer declared.
+The tests check that every skill folder is declared and every declaration has
+a folder.
+
 ## Talk to them
 
 An `openclaw` command talks to the instance whose two variables
