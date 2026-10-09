@@ -21,7 +21,7 @@ import type { ModelInfo } from '../models/types.mts';
 import { generateProfiles, layoutProblem } from '../openclaw/generate.mts';
 import { realPathOf } from '../openclaw/paths.mts';
 import { DEFAULT_CONTEXT_WINDOW } from '../openclaw/profiles.mts';
-import { startCommands } from '../openclaw/shell.mts';
+import { afterGeneration } from '../openclaw/shell.mts';
 import { optionalNumber, resolveDataDir, scriptArgs } from './options.mts';
 
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -249,11 +249,12 @@ const main = async (): Promise<number> => {
         repoRoot: REPO_ROOT,
         ...(contextWindow === undefined ? {} : { contextWindow }),
       });
-      print([
-        'Start the gateways with these commands (one terminal each):',
-        ...startCommands(set.web),
-        ...startCommands(set.knowledge),
-      ]);
+      print(
+        afterGeneration(
+          set,
+          'Start the gateways with these commands (one terminal each):',
+        ),
+      );
       return written;
     },
   });

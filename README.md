@@ -179,7 +179,10 @@ later (for example inside `mise exec --`): its search skill runs
 The two variables above are what tells an `openclaw` command **which
 instance** it talks to. Open a new terminal for each conversation and set
 the same two variables as for that instance's gateway (the default
-`~/.openclaw` profile is not one of ours). Then check the connection:
+`~/.openclaw` profile is not one of ours). `provision apply` and
+`openclaw:generate` print these lines too, for the terminal UI and for one
+question, below the lines that start the gateways. Then check the
+connection:
 
 ```sh
 openclaw gateway health      # prints OK
